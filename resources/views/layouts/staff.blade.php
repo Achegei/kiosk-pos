@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>@yield('title')</title>
-    @vite('resources/css/app.css')
+    @vite('resources/css/app.css', 'resources/js/app.js')
 </head>
 <body class="bg-gray-50">
     <header class="bg-white shadow p-4 flex justify-between">
@@ -15,5 +15,6 @@
     <main class="p-4">
         @yield('content')
     </main>
+    @stack('scripts')
 </body>
 </html>

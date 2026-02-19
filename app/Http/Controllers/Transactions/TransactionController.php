@@ -13,122 +13,215 @@ use App\Models\Inventory;
 
 class TransactionController extends Controller
 {
+
+    /* ========================================
+       LIST TRANSACTIONS
+    ======================================== */
+
     public function index()
     {
-        $transactions = Transaction::with('customer','items.product')->latest()->paginate(20);
+        $transactions = Transaction::with('customer','items.product')
+            ->latest()
+            ->paginate(20);
+
         return view('transactions.index', compact('transactions'));
     }
+
+
+    /* ========================================
+       CREATE PAGE
+    ======================================== */
 
     public function create()
     {
         $products = Product::with('inventory')->get();
         $customers = Customer::all();
+
         return view('transactions.create', compact('products','customers'));
     }
 
-    /**
-     * POS PAGE
-     */
+
+    /* ========================================
+       POS PAGE
+    ======================================== */
+
     public function pos()
     {
         $customers = Customer::all();
         return view('transactions.pos', compact('customers'));
     }
 
-    /**
-     * POS CHECKOUT (SAFE INVENTORY)
-     */
+
+
+    /* ========================================
+       🔥 POS SEARCH (VERY IMPORTANT)
+    ======================================== */
+
+    public function searchProduct(Request $request)
+    {
+        $q = $request->query('query');
+
+        if(!$q) return [];
+
+        return Product::with('inventory')
+            ->where('name','LIKE',"%{$q}%")
+            ->limit(20)
+            ->get()
+            ->map(function($p){
+                return [
+                    'id'=>$p->id,
+                    'name'=>$p->name,
+                    'price'=>$p->price,
+                    'sku'=>$p->sku,
+                    'stock'=>$p->inventory->quantity ?? 0
+                ];
+            });
+    }
+
+
+    /* ========================================
+       🔥 BARCODE SEARCH
+    ======================================== */
+
+    public function productByBarcode($barcode)
+    {
+        $p = Product::with('inventory')
+            ->where('sku',$barcode)
+            ->first();
+
+        if(!$p) return response()->json(null);
+
+        return [
+            'id'=>$p->id,
+            'name'=>$p->name,
+            'price'=>$p->price,
+            'sku'=>$p->sku,
+            'stock'=>$p->inventory->quantity ?? 0
+        ];
+    }
+
+
+
+    /* ========================================
+       🔥 POS CHECKOUT (ULTRA SAFE VERSION)
+    ======================================== */
+
     public function posCheckout(Request $request)
     {
-        $request->validate([
-            'products'=>'required|array|min:1',
-            'products.*.id'=>'required|exists:products,id',
-            'products.*.quantity'=>'required|integer|min:1',
-            'customer_id'=>'nullable|exists:customers,id',
-            'payment_method'=>'required|in:Cash,Mpesa,Credit',
-        ]);
-
         try {
+
+            $request->validate([
+                'products'=>'required|array|min:1',
+                'products.*.id'=>'required|exists:products,id',
+                'products.*.quantity'=>'required|integer|min:1',
+                'customer_id'=>'nullable|exists:customers,id',
+                'payment_method'=>'required|in:Cash,Mpesa,Credit',
+            ]);
+
             $receipt = null;
 
-            DB::transaction(function() use ($request, &$receipt){
-                $totalAmount = 0;
-                $customerId = $request->customer_id;
+            DB::transaction(function() use ($request,&$receipt){
+
+                $total = 0;
 
                 $transaction = Transaction::create([
-                    'customer_id'=>$customerId,
+                    'customer_id'=>$request->customer_id,
                     'total_amount'=>0,
                     'payment_method'=>$request->payment_method,
-                    'status'=>$request->payment_method==='Credit'?'On Credit':'Paid',
+                    'status'=>$request->payment_method==='Credit' ? 'On Credit':'Paid'
                 ]);
 
-                foreach($request->products as $item){
-                    $product = Product::findOrFail($item['id']);
-                    $qty = (int)$item['quantity'];
+                foreach($request->products as $row){
+
+                    $product = Product::findOrFail($row['id']);
+                    $qty = (int)$row['quantity'];
 
                     $inventory = Inventory::where('product_id',$product->id)
                         ->lockForUpdate()
                         ->first();
 
-                    if(!$inventory){
+                    if(!$inventory)
                         throw new \Exception("Inventory missing for ".$product->name);
-                    }
 
-                    if($inventory->quantity < $qty){
+                    if($inventory->quantity < $qty)
                         throw new \Exception("Not enough stock for ".$product->name);
-                    }
 
-                    $lineTotal = $qty * $product->price;
+                    $line = $qty * $product->price;
 
                     TransactionItem::create([
                         'transaction_id'=>$transaction->id,
                         'product_id'=>$product->id,
                         'quantity'=>$qty,
                         'price'=>$product->price,
-                        'total'=>$lineTotal,
+                        'total'=>$line
                     ]);
 
-                    $inventory->decrement('quantity', $qty);
-                    $totalAmount += $lineTotal;
+                    $inventory->decrement('quantity',$qty);
+
+                    $total += $line;
                 }
 
-                $transaction->update(['total_amount'=>$totalAmount]);
+                $transaction->update(['total_amount'=>$total]);
 
-                if($request->payment_method==='Credit' && $customerId){
-                    Customer::find($customerId)->increment('credit', $totalAmount);
+                if($request->payment_method==='Credit' && $request->customer_id){
+                    Customer::find($request->customer_id)->increment('credit',$total);
                 }
 
-                // Build receipt
+                $transaction->load('items.product');
+
                 $receipt = [
-                    'id' => $transaction->id,
-                    'total' => $totalAmount,
-                    'items' => $transaction->items->map(fn($i) => [
-                        'name' => $i->product->name,
-                        'qty' => $i->quantity,
-                        'price' => (float) $i->price
+                    'id'=>$transaction->id,
+                    'total'=>$total,
+                    'items'=>$transaction->items->map(fn($i)=>[
+                        'name'=>$i->product->name,
+                        'qty'=>$i->quantity,
+                        'price'=>(float)$i->price
                     ])
                 ];
+
             });
 
-            return response()->json(['success'=>true, 'receipt'=>$receipt]);
+            return response()->json([
+                'success'=>true,
+                'receipt'=>$receipt
+            ]);
 
-        } catch (\Exception $e) {
-            return response()->json(['success'=>false,'message'=>$e->getMessage()], 500);
+        }
+        catch(\Illuminate\Validation\ValidationException $e){
+            return response()->json([
+                'success'=>false,
+                'message'=>$e->errors()
+            ],422);
+        }
+        catch(\Throwable $e){
+
+            \Log::error("POS ERROR ".$e->getMessage());
+
+            return response()->json([
+                'success'=>false,
+                'message'=>$e->getMessage()
+            ]);
         }
     }
 
-    /**
-     * DELETE TRANSACTION (RESTORE STOCK)
-     */
+
+
+    /* ========================================
+       DELETE TRANSACTION (RESTORE STOCK)
+    ======================================== */
+
     public function destroy(Transaction $transaction)
     {
         DB::transaction(function() use ($transaction){
+
             foreach($transaction->items as $item){
+
                 $inventory = Inventory::where('product_id',$item->product_id)
                     ->lockForUpdate()
                     ->first();
+
                 if($inventory){
-                    $inventory->increment('quantity', $item->quantity);
+                    $inventory->increment('quantity',$item->quantity);
                 }
             }
 
@@ -140,6 +233,9 @@ class TransactionController extends Controller
             $transaction->delete();
         });
 
-        return redirect()->route('transactions.index')->with('success','Transaction deleted successfully!');
+        return redirect()
+            ->route('transactions.index')
+            ->with('success','Transaction deleted successfully!');
     }
+
 }

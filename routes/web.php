@@ -73,9 +73,6 @@ Route::middleware('auth')->group(function () {
     Route::middleware(['role:super_admin,admin,supervisor,staff','device'])->group(function () {
         // POS MAIN PAGE
         Route::get('/pos', [TransactionController::class,'pos'])->name('pos');
-
-        // POS CHECKOUT
-        Route::post('/transactions/pos-checkout', [TransactionController::class,'posCheckout']);
     });
 
     /*

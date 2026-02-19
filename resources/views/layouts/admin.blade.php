@@ -5,25 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'POS Dashboard')</title>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    @vite(['resources/css/app.css','resources/js/app.js'])
 
-    <!-- Alpine.js -->
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.12.0/dist/cdn.min.js" defer></script>
 </head>
+    <body class="bg-gray-100 font-sans antialiased">
 
-<body class="bg-gray-100 font-sans antialiased">
-
-    <div class="flex h-screen overflow-hidden">
-        <!-- Sidebar -->
-        <aside class="w-64 bg-white shadow-md flex-shrink-0">
-            <a href="{{ route('dashboard') }}" class="inline-block">
+        <div class="flex h-screen overflow-hidden">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-white shadow-md flex-shrink-0">
                 <a href="{{ route('dashboard') }}" class="inline-block mt-6">
-                <div class="px-4 py-2 text-xl font-bold text-white bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 
-                            rounded-full shadow-md hover:scale-105 transform transition duration-300 border-b-2 border-blue-700 text-center">
-                    POS Dashboard
-                </div>
-            </a>
+                    <div class="px-4 py-2 text-xl font-bold text-white bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 
+                                rounded-full shadow-md hover:scale-105 transform transition duration-300 border-b-2 border-blue-700 text-center">
+                        POS Dashboard
+                    </div>
+                </a>
 
 
             <nav class="mt-6">
@@ -103,6 +98,6 @@
             </main>
         </div>
     </div>
-
+@stack('scripts')
 </body>
 </html>

@@ -2,9 +2,23 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Transactions\TransactionController;
+use App\Http\Controllers\Products\ProductController;
 
-// Search products by name
-Route::get('/products/search', [TransactionController::class, 'searchProduct']);
+/*
+|--------------------------------------------------------------------------
+| POS API ROUTES (JSON ONLY)
+|--------------------------------------------------------------------------
+*/
 
-// Get product by barcode
-Route::get('/products/barcode/{barcode}', [TransactionController::class, 'productByBarcode']);
+Route::middleware(['auth'])->group(function () {
+
+    // 🔎 SEARCH PRODUCTS
+    Route::get('/products/search', [ProductController::class,'search']);
+
+    // 🔎 BARCODE LOOKUP
+    Route::get('/products/barcode/{barcode}', [ProductController::class,'searchByBarcode']);
+
+    // 💰 POS CHECKOUT
+    Route::post('/pos/checkout', [TransactionController::class,'posCheckout']);
+
+});
