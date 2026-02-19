@@ -14,7 +14,6 @@ use App\Http\Controllers\Transactions\TransactionController;
 use App\Http\Controllers\Transactions\TransactionItemController;
 use App\Http\Controllers\Inventories\InventoryController;
 
-
 /*
 |--------------------------------------------------------------------------
 | ROOT REDIRECT
@@ -24,20 +23,16 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | GUEST ROUTES (NOT LOGGED IN)
 |--------------------------------------------------------------------------
 */
 Route::middleware('guest')->group(function () {
-
     Route::get('/login', [AuthController::class,'showLogin'])->name('login');
     Route::post('/login', [AuthController::class,'login']);
     Route::get('/admin/login', [AuthController::class,'showLogin']);
-
 });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -53,14 +48,12 @@ Route::middleware('auth')->group(function () {
     */
     Route::post('/device/check', [DeviceController::class,'check']);
 
-
     /*
     |--------------------------------------------------------------------------
     | LOGOUT
     |--------------------------------------------------------------------------
     */
     Route::post('/logout', [AuthController::class,'logout'])->name('logout');
-
 
     /*
     |--------------------------------------------------------------------------
@@ -71,7 +64,6 @@ Route::middleware('auth')->group(function () {
         ->middleware('role:super_admin,admin,supervisor,staff')
         ->name('dashboard');
 
-
     /*
     |--------------------------------------------------------------------------
     | POS & DEVICE-LOCKED ROUTES
@@ -79,31 +71,21 @@ Route::middleware('auth')->group(function () {
     | Only active devices can access POS pages
     */
     Route::middleware(['role:super_admin,admin,supervisor,staff','device'])->group(function () {
-
         // POS MAIN PAGE
         Route::get('/pos', [TransactionController::class,'pos'])->name('pos');
 
         // POS CHECKOUT
-        Route::post('/transactions/pos-checkout',
-            [TransactionController::class,'posCheckout']
-        );
-
+        Route::post('/transactions/pos-checkout', [TransactionController::class,'posCheckout']);
     });
-
 
     /*
     |--------------------------------------------------------------------------
     | LIVE SEARCH ROUTES (AJAX)
     |--------------------------------------------------------------------------
     | Accessible for all authenticated users
-    | Optional: add X-DEVICE-ID header in JS if you want device validation
     */
-    Route::get('/products/search', [ProductController::class,'search'])
-        ->name('products.search');
-
-    Route::get('/products/barcode/{barcode}', [ProductController::class,'searchByBarcode'])
-        ->name('products.barcode');
-
+    Route::get('/products/search', [ProductController::class,'search'])->name('products.search');
+    Route::get('/products/barcode/{barcode}', [ProductController::class,'searchByBarcode'])->name('products.barcode');
 
     /*
     |--------------------------------------------------------------------------
@@ -111,15 +93,9 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::middleware('role:admin,superadmin,supervisor')->group(function(){
-
-        Route::get('/settings/low-stock', [SettingsController::class, 'editLowStock'])
-            ->name('settings.low_stock');
-
-        Route::post('/settings/low-stock', [SettingsController::class, 'updateLowStock'])
-            ->name('settings.low_stock.update');
-
+        Route::get('/settings/low-stock', [SettingsController::class, 'editLowStock'])->name('settings.low_stock');
+        Route::post('/settings/low-stock', [SettingsController::class, 'updateLowStock'])->name('settings.low_stock.update');
     });
-
 
     /*
     |--------------------------------------------------------------------------
@@ -131,19 +107,15 @@ Route::middleware('auth')->group(function () {
     Route::resource('transactions', TransactionController::class);
     Route::resource('transaction-items', TransactionItemController::class);
     Route::resource('inventories', InventoryController::class);
-
 });
-
 
 /*
 |--------------------------------------------------------------------------
-| INVENTORY TOGGLE (OUTSIDE GROUP — KEEP AS YOU HAD)
+| INVENTORY TOGGLE (OUTSIDE GROUP)
 |--------------------------------------------------------------------------
 */
-Route::patch('inventories/{inventory}/toggle',
-    [InventoryController::class, 'toggle']
-)->name('inventories.toggle');
-
+Route::patch('inventories/{inventory}/toggle', [InventoryController::class, 'toggle'])
+    ->name('inventories.toggle');
 
 /*
 |--------------------------------------------------------------------------

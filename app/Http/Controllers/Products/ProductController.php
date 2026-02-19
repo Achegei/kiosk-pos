@@ -10,7 +10,7 @@ class ProductController extends Controller
 {
     public function index()
     {
-        $products = Product::all();
+        $products = Product::with('inventory')->get();
         return view('products.index', compact('products'));
     }
 
@@ -25,10 +25,9 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:100|unique:products',
             'price' => 'required|numeric|min:0',
-            'quantity' => 'required|integer|min:0',
         ]);
 
-        Product::create($request->all());
+        $product = Product::create($request->only(['name','sku','price']));
         return redirect()->route('products.index')->with('success', 'Product created successfully.');
     }
 
@@ -43,10 +42,9 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:100|unique:products,sku,' . $product->id,
             'price' => 'required|numeric|min:0',
-            'quantity' => 'required|integer|min:0',
         ]);
 
-        $product->update($request->all());
+        $product->update($request->only(['name','sku','price']));
         return redirect()->route('products.index')->with('success', 'Product updated successfully.');
     }
 
@@ -55,28 +53,50 @@ class ProductController extends Controller
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully.');
     }
-    // App\Http\Controllers\Products\ProductController.php
 
+    /**
+     * LIVE SEARCH (NAME OR PARTIAL SKU)
+     */
     public function search(Request $request)
-        {
-            $query = $request->query('query');
-
-            if (!$query) return response()->json([]);
-
-            // Search by name or SKU (barcode), partial match
-            $products = Product::where('name', 'LIKE', "%{$query}%")
-                ->orWhere('sku', 'LIKE', "%{$query}%")
-                ->take(10) // limit results for speed
-                ->get();
-
-            return response()->json($products);
-        }
-    public function searchByBarcode($barcode)
     {
-        $product = Product::where('sku', $barcode)->first();
+        $query = $request->query('query');
+        if (!$query) return response()->json([]);
 
-        return response()->json($product ? [$product] : []);
+        $products = Product::with('inventory')
+            ->where('is_active', 1)
+            ->where(function($q) use ($query){
+                $q->where('name', 'LIKE', "%{$query}%")
+                  ->orWhere('sku', 'LIKE', "%{$query}%");
+            })
+            ->take(10)
+            ->get()
+            ->map(fn($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'price' => (float) $p->price,
+                'stock' => optional($p->inventory)->quantity ?? 0,
+            ]);
+
+        return response()->json($products);
     }
 
+    /**
+     * SEARCH BY BARCODE
+     */
+    public function searchByBarcode($barcode)
+    {
+        $product = Product::with('inventory')
+            ->where('sku', $barcode)
+            ->where('is_active', 1)
+            ->first();
 
+        if (!$product) return response()->json([]);
+
+        return response()->json([
+            'id' => $product->id,
+            'name' => $product->name,
+            'price' => (float) $product->price,
+            'stock' => optional($product->inventory)->quantity ?? 0,
+        ]);
+    }
 }
