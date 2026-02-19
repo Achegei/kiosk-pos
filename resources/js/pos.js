@@ -465,3 +465,60 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
 });
+
+// QUICK CREATE CUSTOMER FROM POS
+const newCustomerBtn = document.getElementById('newCustomerBtn');
+
+if(newCustomerBtn){
+
+newCustomerBtn.onclick = async ()=>{
+
+    const result = await Swal.fire({
+
+        title:'New Customer',
+
+        html:`
+            <input id="cname" class="swal2-input" placeholder="Customer name">
+            <input id="cphone" class="swal2-input" placeholder="Phone">
+            <input id="cemail" class="swal2-input" placeholder="Email optional">
+        `,
+
+        confirmButtonText:'Create',
+
+        preConfirm:()=>({
+            name:document.getElementById('cname').value,
+            phone:document.getElementById('cphone').value,
+            email:document.getElementById('cemail').value
+        })
+
+    });
+
+    if(!result.value) return;
+
+    const res = await fetch('/pos/customer-quick-create',{
+        method:'POST',
+        headers:{
+            'Content-Type':'application/json',
+            'X-CSRF-TOKEN':document.querySelector('input[name=_token]').value
+        },
+        body:JSON.stringify(result.value)
+    });
+
+    const customer = await res.json();
+
+    const select=document.getElementById('customer');
+
+    const opt=new Option(
+        customer.name+" ("+(customer.phone??'')+")",
+        customer.id,
+        true,
+        true
+    );
+
+    select.appendChild(opt);
+
+    Swal.fire('Customer added','','success');
+
+};
+
+}

@@ -24,7 +24,8 @@ class TransactionController extends Controller
             ->latest()
             ->paginate(20);
 
-        return view('transactions.index', compact('transactions'));
+        $customers = Customer::all();
+        return view('transactions.index', compact('transactions', 'customers')); // pass customers
     }
 
 

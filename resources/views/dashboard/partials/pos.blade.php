@@ -17,17 +17,30 @@
     </div>
 
     <!-- CUSTOMER -->
-    <div class="mb-6">
-        <label class="font-semibold">Customer</label>
-        <select id="customer" name="customer_id" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm">
-            <option value="">Walk-in</option>
+<div class="mb-6">
+    <label class="font-semibold block mb-1">Customer</label>
+
+    <div class="flex gap-2">
+
+        <select id="customer" name="customer_id" class="w-full rounded-lg border-gray-300 shadow-sm">
+            <option value="" selected>Walk-in Customer</option>
             @foreach($customers as $customer)
                 <option value="{{ $customer->id }}">
-                    {{ $customer->name }} (Credit: {{ number_format($customer->credit ?? 0,2) }})
+                    {{ $customer->name }} @if($customer->phone) ({{ $customer->phone }}) {{$customer->credit}} @endif
                 </option>
             @endforeach
         </select>
+
+
+        <!-- QUICK ADD BUTTON -->
+        <button type="button" id="newCustomerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg shadow">
+            + New
+        </button>
+
     </div>
+</div>
+
+
 
     <!-- SEARCH -->
     <div class="relative mb-6 flex gap-2">

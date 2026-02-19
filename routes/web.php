@@ -99,6 +99,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings/low-stock', [SettingsController::class, 'updateLowStock'])->name('settings.low_stock.update');
     });
 
+    // Quick add customer from POS
+    Route::post('/pos/customer-quick-create', [CustomerController::class, 'quickStore'])->name('customers.quickStore');
     /*
     |--------------------------------------------------------------------------
     | CRUD RESOURCES (AUTHENTICATED USERS)

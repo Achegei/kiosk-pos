@@ -45,7 +45,7 @@ class DashboardController extends Controller
         // ------------------------
         // PRODUCTS & CUSTOMERS
         // ------------------------
-        if (in_array($user->role, ['supervisor', 'admin', 'super_admin'])) {
+        if (in_array($user->role, ['staff', 'supervisor', 'admin', 'super_admin'])) {
             // All products for admin/supervisor
             $data['products'] = Product::orderBy('name')->get();
 
