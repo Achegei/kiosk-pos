@@ -302,90 +302,160 @@ document.addEventListener("DOMContentLoaded", function () {
     // ---------------- CHECKOUT ----------------
     form.addEventListener('submit', async function(e){
 
-        e.preventDefault();
+    e.preventDefault();
 
-        try{
+    try{
 
-            if(!window.cart.length){
-                Swal.fire('Cart empty','','warning');
+        if(!window.cart.length){
+            Swal.fire('Cart empty','','warning');
+            return;
+        }
+
+        const method=document.getElementById('payment_method').value;
+        const subtotal=parseFloat(subtotalEl.innerText);
+
+        let mpesaCode=null;
+
+        /* ================= CASH ================= */
+
+        if(method==="Cash"){
+
+            const cash=parseFloat(cashInput.value);
+
+            if(!cash || cash<subtotal){
+                Swal.fire({
+                    icon:'error',
+                    title:'Cash required',
+                    text:'Customer must give enough cash'
+                });
+                return;
+            }
+        }
+
+        /* ================= MPESA ================= */
+
+        if(method==="Mpesa"){
+
+            const result = await Swal.fire({
+                title:'Enter Mpesa Confirmation Code',
+                input:'text',
+                inputPlaceholder:'Example: QWE123ABC',
+                confirmButtonText:'Confirm Payment',
+                showCancelButton:true
+            });
+
+            if(!result.value){
+                Swal.fire('Mpesa code required','','error');
                 return;
             }
 
-            const method=document.getElementById('payment_method').value;
-            const subtotal=parseFloat(subtotalEl.innerText);
+            mpesaCode=result.value;
+        }
 
-            if(method==="Cash"){
+        /* ================= CREDIT ================= */
 
-                const cash=parseFloat(cashInput.value);
+        if(method==="Credit"){
 
-                if(!cash || cash<subtotal){
+            const customer=document.getElementById('customer').value;
 
-                    Swal.fire({
-                        icon:'error',
-                        title:'Cash required',
-                        text:'Customer must give enough cash'
-                    });
-
-                    return;
-                }
-            }
-
-            const payload={
-                _token:document.querySelector('input[name=_token]').value,
-                customer_id:document.getElementById('customer').value,
-                payment_method:method,
-                products:window.cart.map(p=>({
-                    id:p.id,
-                    quantity:p.quantity
-                }))
-            };
-
-            const res=await fetch(form.action,{
-                method:'POST',
-                headers:{'Content-Type':'application/json','Accept':'application/json'},
-                body:JSON.stringify(payload)
-            });
-
-            const data=await res.json();
-
-            if(!data.success){
-
-                Swal.fire('Checkout failed',data.message,'error');
+            if(!customer){
+                Swal.fire({
+                    icon:'error',
+                    title:'Select customer for credit sale'
+                });
                 return;
             }
-
-            Swal.fire({
-                icon:'success',
-                title:'SALE COMPLETED',
-                html:`
-                    <div style="font-size:18px">
-                        🧾 Receipt: <b>#${data.receipt.id}</b><br><br>
-                        💰 Total: <b>KES ${Number(data.receipt.total).toFixed(2)}</b>
-                    </div>
-                `,
-                confirmButtonText:'🖨 Print Receipt',
-                confirmButtonColor:'#16a34a',
-                background:'#f0fdf4',
-                backdrop:'rgba(0,0,0,0.6)',
-                allowOutsideClick:false
-            }).then(()=>{
-
-                printReceipt(data.receipt);
-
-                window.cart=[];
-                renderCart();
-
-                cashInput.value='';
-            });
-
         }
-        catch(err){
 
-            console.error(err);
+        /* ================= SEND ================= */
 
-            Swal.fire('Checkout crashed','See console','error');
+        const payload={
+            _token:document.querySelector('input[name=_token]').value,
+            customer_id:document.getElementById('customer').value,
+            payment_method:method,
+            mpesa_code:mpesaCode,
+            products:window.cart.map(p=>({
+                id:p.id,
+                quantity:p.quantity
+            }))
+        };
+
+        const res=await fetch(form.action,{
+            method:'POST',
+            headers:{'Content-Type':'application/json','Accept':'application/json'},
+            body:JSON.stringify(payload)
+        });
+
+        const data=await res.json();
+
+        if(!data.success){
+            Swal.fire('Checkout failed',JSON.stringify(data.message),'error');
+            return;
         }
+
+        Swal.fire({
+            icon:'success',
+            title:'SALE COMPLETED',
+            html:`
+                <div style="font-size:18px">
+                    🧾 Receipt: <b>#${data.receipt.id}</b><br><br>
+                    💰 Total: <b>KES ${Number(data.receipt.total).toFixed(2)}</b>
+                </div>
+            `,
+            confirmButtonText:'🖨 Print Receipt',
+            confirmButtonColor:'#16a34a',
+            background:'#f0fdf4',
+            allowOutsideClick:false
+        }).then(()=>{
+
+            printReceipt(data.receipt);
+
+            window.cart=[];
+            renderCart();
+            cashInput.value='';
+        });
+
+    }
+    catch(err){
+
+        console.error(err);
+        Swal.fire('Checkout crashed','See console','error');
+    }
+});
+
+
+    //printReceipt function to open a new window with the receipt details and trigger the print dialog
+    window.printReceipt = function(receipt){
+
+    let html = `
+    <div style="font-family:monospace;padding:20px">
+        <h2 style="text-align:center">STORE RECEIPT</h2>
+        <hr>
+        Receipt #: ${receipt.id}<br>
+        Date: ${new Date().toLocaleString()}<br>
+        <hr>
+    `;
+
+    receipt.items?.forEach(item=>{
+        html += `
+        ${item.name}<br>
+        ${item.qty} x ${item.price} = ${item.total}<br><br>
+        `;
     });
+
+    html += `
+        <hr>
+        <h3>TOTAL: KES ${receipt.total}</h3>
+    </div>
+    `;
+
+    const w = window.open('', '', 'width=400,height=600');
+
+    w.document.write(html);
+    w.document.close();
+
+    setTimeout(()=>w.print(),500);
+};
 
 
     // ---------------- OUTSIDE CLICK ----------------

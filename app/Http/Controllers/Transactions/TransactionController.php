@@ -116,6 +116,7 @@ class TransactionController extends Controller
                 'products.*.quantity'=>'required|integer|min:1',
                 'customer_id'=>'nullable|exists:customers,id',
                 'payment_method'=>'required|in:Cash,Mpesa,Credit',
+                'mpesa_code'=>'nullable|string|max:10',
             ]);
 
             $receipt = null;
@@ -124,12 +125,18 @@ class TransactionController extends Controller
 
                 $total = 0;
 
+                if($request->payment_method==='Credit' && !$request->customer_id){
+                    throw new \Exception("Credit sale requires customer");
+                }
+
                 $transaction = Transaction::create([
                     'customer_id'=>$request->customer_id,
                     'total_amount'=>0,
                     'payment_method'=>$request->payment_method,
+                    'mpesa_code'=>$request->mpesa_code ?? null,
                     'status'=>$request->payment_method==='Credit' ? 'On Credit':'Paid'
                 ]);
+
 
                 foreach($request->products as $row){
 
@@ -175,9 +182,11 @@ class TransactionController extends Controller
                     'items'=>$transaction->items->map(fn($i)=>[
                         'name'=>$i->product->name,
                         'qty'=>$i->quantity,
-                        'price'=>(float)$i->price
+                        'price'=>(float)$i->price,
+                        'total'=>$i->quantity * $i->price
                     ])
                 ];
+
 
             });
 
