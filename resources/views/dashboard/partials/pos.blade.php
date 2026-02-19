@@ -81,7 +81,7 @@
     </div>
 
     <!-- PAYMENT FORM -->
-    <form id="checkoutForm" action="{{ url('/transactions/pos-checkout') }}" method="POST">
+    <form id="checkoutForm" action="{{ route('transactions.pos_checkout') }}" method="POST">
         @csrf
         <input type="hidden" name="customer_id" id="customer_id">
         <input type="hidden" name="products" id="products">
