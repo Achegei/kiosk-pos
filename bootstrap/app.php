@@ -28,4 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // Optional: add custom exception handling here
     })
+    ->withProviders([
+    App\Providers\AppServiceProvider::class,
+    App\Providers\EventServiceProvider::class,
+])
     ->create();
