@@ -522,3 +522,172 @@ newCustomerBtn.onclick = async ()=>{
 };
 
 }
+
+// ---------------- OFFLINE SUPPORT ----------------
+const offlineQueueKey = 'offline_sales_queue';
+
+/**
+ * Save sale locally if offline with type-safety and logging
+ */
+function saveOfflineSale(sale) {
+    if (!sale || !Array.isArray(sale.items) || sale.items.length === 0) {
+        console.error('Invalid sale object, cannot save offline', sale);
+        return;
+    }
+
+    let queue = JSON.parse(localStorage.getItem(offlineQueueKey) || '[]');
+
+    // Add unique local ID and synced flag
+    const enrichedSale = {
+        ...sale,
+        local_id: crypto.randomUUID(),
+        synced: false,
+        timestamp: new Date().toISOString(),
+        device_uuid: deviceId
+    };
+
+    queue.push(enrichedSale);
+    localStorage.setItem(offlineQueueKey, JSON.stringify(queue));
+
+    console.log('Offline sale saved:', enrichedSale);
+}
+
+/**
+ * Try to sync offline queue when online
+ * Partial success handling & logging added
+ */
+async function syncOfflineSales() {
+    let queue = JSON.parse(localStorage.getItem(offlineQueueKey) || '[]');
+    if (!queue.length) return;
+
+    const unsynced = [];
+
+    for (let sale of queue) {
+        if (sale.synced) continue;
+
+        try {
+            const res = await fetch('/api/offline-sync', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sales: [sale]})
+            });
+
+            const data = await res.json();
+            if (data.status === 'success') {
+                sale.synced = true;
+                console.log('Sale synced:', sale.local_id);
+            } else {
+                unsynced.push(sale);
+                console.warn('Sale not synced, server returned error:', data);
+            }
+        } catch (err) {
+            unsynced.push(sale);
+            console.error('Sync failed for sale', sale.local_id, err);
+        }
+    }
+
+    localStorage.setItem(offlineQueueKey, JSON.stringify(unsynced));
+
+    if (unsynced.length === 0 && queue.length > 0) {
+        alert('Offline sales synced successfully!');
+    }
+}
+
+// Trigger sync on network reconnect
+window.addEventListener('online', syncOfflineSales);
+
+
+/**
+ * Complete sale with offline fallback
+ * Enrich payload with type-safety and device info
+ */
+function completeSale(cart, customerId = null, paymentMethod = 'Cash', mpesaCode = null) {
+    const salePayload = {
+        customer_id: customerId,
+        payment_method: paymentMethod,
+        mpesa_code: mpesaCode,
+        items: cart.map(p => ({product_id: p.id, quantity: p.quantity, price: p.price})),
+        subtotal: cart.reduce((sum, p) => sum + p.price * p.quantity, 0),
+        timestamp: new Date().toISOString(),
+        device_uuid: deviceId
+    };
+
+    if (navigator.onLine) {
+        fetch('/api/checkout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('input[name=_token]').value
+            },
+            body: JSON.stringify(salePayload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Sale completed online:', data.receipt.id);
+                Swal.fire('Sale completed online!', `Receipt: #${data.receipt.id}`, 'success');
+            } else {
+                console.warn('Server rejected sale, saving offline', data);
+                saveOfflineSale(salePayload);
+            }
+        })
+        .catch(err => {
+            console.error('Online sale failed, saving offline', err);
+            saveOfflineSale(salePayload);
+        });
+    } else {
+        saveOfflineSale(salePayload);
+        console.log('Offline, sale queued:', salePayload.local_id);
+        Swal.fire('Offline Sale', 'Sale saved offline! Will sync when online.', 'info');
+    }
+}
+
+/**
+ * Optional: show offline/online status & unsynced count in POS UI
+ */
+function updateOfflineStatus() {
+    const queue = JSON.parse(localStorage.getItem(offlineQueueKey) || '[]');
+    const statusEl = document.getElementById('offlineStatus'); // create <span id="offlineStatus"></span> in HTML
+
+    if (!statusEl) return;
+
+    const unsyncedCount = queue.filter(s => !s.synced).length;
+
+    if (navigator.onLine) {
+        statusEl.textContent = `Online | Unsynced: ${unsyncedCount}`;
+        statusEl.classList.add('text-green-600');
+        statusEl.classList.remove('text-red-600');
+    } else {
+        statusEl.textContent = `Offline | Unsynced: ${unsyncedCount}`;
+        statusEl.classList.add('text-red-600');
+        statusEl.classList.remove('text-green-600');
+    }
+}
+
+window.addEventListener('online', updateOfflineStatus);
+window.addEventListener('offline', updateOfflineStatus);
+setInterval(updateOfflineStatus, 5000);
+
+//network check
+const networkStatus = document.getElementById('networkStatus');
+
+function updateNetworkStatus() {
+    if (!networkStatus) return; // safety
+
+    if (navigator.onLine) {
+        networkStatus.innerText = 'ONLINE';
+        networkStatus.classList.remove('bg-red-500');
+        networkStatus.classList.add('bg-green-500');
+    } else {
+        networkStatus.innerText = 'OFFLINE';
+        networkStatus.classList.remove('bg-green-500');
+        networkStatus.classList.add('bg-red-500');
+    }
+}
+
+// Initial check
+updateNetworkStatus();
+
+// Listen for network changes
+window.addEventListener('online', updateNetworkStatus);
+window.addEventListener('offline', updateNetworkStatus);

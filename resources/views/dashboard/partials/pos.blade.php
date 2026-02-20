@@ -3,6 +3,10 @@
 <div class="bg-white shadow-xl rounded-2xl p-6">
 
     <h3 class="text-2xl font-bold mb-6 text-gray-800">🛒 Smart POS</h3>
+     <!-- 🟢🔴 ONLINE/OFFLINE STATUS -->
+    <div id="networkStatus" class="px-3 py-1 rounded text-white font-bold mb-4">
+        Checking...
+    </div>
 
     <!-- ===== RECEIPT MODAL ===== -->
     <div id="receiptModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
