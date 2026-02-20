@@ -6,6 +6,8 @@
 <div class="p-6 space-y-6">
     {{-- POS Section --}}
     <!--@include('dashboard.partials.pos')-->
+        {{-- Active Devices --}}    
+    @include('dashboard.partials.devices')
 
     {{-- Stats --}}
     @include('dashboard.partials.stats')

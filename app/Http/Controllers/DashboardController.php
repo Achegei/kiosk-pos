@@ -7,9 +7,9 @@ use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\Inventory;
 use App\Models\Customer;
+use App\Models\Device;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
-use App\Models\Device;
 
 class DashboardController extends Controller
 {
@@ -20,10 +20,10 @@ class DashboardController extends Controller
     {
         $user = auth()->user();
 
-            // ===== DEVICE AUTO REGISTER (SAFE INSERT) =====
+        // ===== DEVICE AUTO REGISTER (SAFE INSERT) =====
         $uuid = request()->header('X-DEVICE-ID') ?? request()->input('device_uuid');
 
-        if($uuid){
+        if ($uuid) {
             Device::firstOrCreate(
                 ['device_uuid' => $uuid],
                 [
@@ -46,22 +46,29 @@ class DashboardController extends Controller
         // PRODUCTS & CUSTOMERS
         // ------------------------
         if (in_array($user->role, ['staff', 'supervisor', 'admin', 'super_admin'])) {
-            // All products for admin/supervisor
             $data['products'] = Product::orderBy('name')->get();
 
-            // Low-stock products (based on threshold)
-            $data['lowStock'] = Inventory::with('product')
-                ->where('quantity', '<=', $lowStockThreshold)
-                ->get();
+            // Low-stock products (adjusted for pending offline sales)
+            $data['lowStock'] = Inventory::with('product')->get()->filter(function($inventory) use ($lowStockThreshold) {
 
-            // Pass threshold to view
+                // Count pending offline sales for this product
+                $pendingOffline = DB::table('offline_sales')
+                    ->where('synced', 0)
+                    ->whereJsonContains('sale_data->products', ['product_id' => $inventory->product_id])
+                    ->sum(DB::raw("JSON_EXTRACT(sale_data, '$.quantity')"));
+
+                // Adjusted quantity
+                $availableQty = $inventory->quantity - $pendingOffline;
+
+                // Return true if below threshold
+                return $availableQty <= $lowStockThreshold;
+            });
+
             $data['lowStockThreshold'] = $lowStockThreshold;
 
-            // All customers
             $data['customers'] = Customer::orderBy('name')->get();
             $data['activeCustomers'] = $data['customers']->count();
         } else {
-            // Ensure variables exist for staff views
             $data['products'] = collect();
             $data['lowStock'] = collect();
             $data['lowStockThreshold'] = $lowStockThreshold;
@@ -73,16 +80,12 @@ class DashboardController extends Controller
         // POS / STAFF DATA
         // ------------------------
         if (in_array($user->role, ['staff', 'supervisor', 'admin', 'super_admin'])) {
-
-            // Base query for today
             $baseQuery = Transaction::whereDate('transactions.created_at', $today);
 
-            // Staff: filter to their own transactions
             if ($user->role === 'staff') {
                 $baseQuery = $baseQuery->where('staff_id', $user->id);
             }
 
-            // Sales and credits
             $data['todaySales'] = (clone $baseQuery)->where('status', 'Paid')->sum('total_amount');
             $data['todayCredit'] = (clone $baseQuery)->where('status', 'On Credit')->sum('total_amount');
             $data['totalTransactions'] = (clone $baseQuery)->count();
@@ -93,37 +96,64 @@ class DashboardController extends Controller
         }
 
         // ------------------------
+        // OFFLINE CART ITEMS (STAFF ONLY)
+        // ------------------------
+        if ($user->role === 'staff') {
+
+            $offlineCartItems = DB::table('offline_sales')
+                ->where('user_id', $user->id)
+                ->where('synced', 0)
+                ->get()
+                ->map(function($sale) {
+                    $saleData = json_decode($sale->sale_data, true);
+                    return $saleData['products'] ?? [];
+                })->flatten(1);
+
+            $data['offlineCartItems'] = $offlineCartItems;
+
+        } else {
+            $data['offlineCartItems'] = collect();
+        }
+
+        // ------------------------
         // ADMIN / SUPER ADMIN DATA
         // ------------------------
         if (in_array($user->role, ['admin', 'super_admin'])) {
-
-            // Daily sales & credit
             $data['dailySales'] = $data['todaySales'];
             $data['dailyCreditSales'] = $data['todayCredit'];
-
-            // Total revenue
             $data['totalRevenue'] = Transaction::sum('total_amount');
-
-            // Total cash-in today
             $data['moneyIn'] = $data['todaySales'] + $data['todayCredit'];
 
-            // Total cost of all products in stock
             $data['moneyOut'] = DB::table('inventories')
                 ->join('products', 'inventories.product_id', '=', 'products.id')
                 ->sum(DB::raw('inventories.quantity * COALESCE(products.cost_price,0)'));
 
-            // Profit for today
             $data['profitToday'] = Transaction::join('transaction_items', 'transactions.id', '=', 'transaction_items.transaction_id')
                 ->join('products', 'transaction_items.product_id', '=', 'products.id')
                 ->whereDate('transactions.created_at', $today)
                 ->where('transactions.status', 'Paid')
                 ->sum(DB::raw('(transaction_items.quantity * products.price) - (transaction_items.quantity * COALESCE(products.cost_price,0))'));
 
-            // Latest 10 transactions
             $data['recentTransactions'] = Transaction::with(['customer', 'items.product'])
                 ->latest()
                 ->take(10)
                 ->get();
+
+            // ===== Active devices & unsynced offline sales =====
+            $data['activeDevices'] = Device::all()->map(function($device) {
+                $unsyncedSales = DB::table('offline_sales')
+                    ->where('device_uuid', $device->device_uuid)
+                    ->where('synced', 0)
+                    ->count();
+
+                return [
+                    'uuid' => $device->device_uuid,
+                    'name' => $device->device_name,
+                    'license_expires_at' => $device->license_expires_at ? Carbon::parse($device->license_expires_at) : null,
+                    'unsynced_sales' => $unsyncedSales,
+                ];
+            });
+
         } else {
             $data['dailySales'] = 0;
             $data['dailyCreditSales'] = 0;
@@ -132,6 +162,7 @@ class DashboardController extends Controller
             $data['moneyOut'] = 0;
             $data['profitToday'] = 0;
             $data['recentTransactions'] = collect();
+            $data['activeDevices'] = collect();
         }
 
         // ------------------------

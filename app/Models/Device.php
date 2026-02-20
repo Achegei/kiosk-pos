@@ -13,4 +13,9 @@ class Device extends Model
         'license_expires_at',
         'is_active'
     ];
+
+    // Cast timestamps to Carbon instances
+    protected $casts = [
+        'license_expires_at' => 'datetime',
+    ];
 }

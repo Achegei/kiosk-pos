@@ -10,26 +10,30 @@ class DeviceController extends Controller
 {
     public function check(Request $request)
     {
-        $uuid = $request->header('X-DEVICE-ID') ?? $request->input('device_uuid');
+        // Generate or fetch device UUID
+        $uuid = $request->header('X-DEVICE-ID') 
+            ?? $request->input('device_uuid') 
+            ?? md5($request->ip() . $request->userAgent());
 
-        if(!$uuid){
+        // Sanity check
+        if (!$uuid) {
             return response()->json([
                 'allowed' => false,
                 'message' => 'Missing device UUID'
-            ],403);
+            ], 403);
         }
 
-        // create device if not exists (auto register tablet)
+        // Auto-register device
         $device = Device::firstOrCreate(
             ['device_uuid' => $uuid],
             [
                 'device_name' => $request->userAgent(),
-                'license_expires_at' => Carbon::now()->addDays(7) // free trial
+                'license_expires_at' => Carbon::now()->addDays(7) // 7-day free trial
             ]
         );
 
-        // check if expired
-        if($device->license_expires_at && Carbon::now()->gt($device->license_expires_at)){
+        // Check if license expired
+        if ($device->license_expires_at && Carbon::now()->gt($device->license_expires_at)) {
             return response()->json([
                 'allowed' => false,
                 'expired' => true,
@@ -39,7 +43,9 @@ class DeviceController extends Controller
 
         return response()->json([
             'allowed' => true,
-            'expires' => $device->license_expires_at
+            'uuid' => $device->device_uuid,
+            'name' => $device->device_name,
+            'expires' => $device->license_expires_at?->format('Y-m-d H:i:s')
         ]);
     }
 }

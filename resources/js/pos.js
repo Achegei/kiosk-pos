@@ -211,8 +211,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 id:product.id,
                 name:product.name,
                 price:parseFloat(product.price),
-                quantity:1,
-                stock:product.stock??0
+                quantity:  1,
+                stock:product.stock ?? 0
             });
         }
 
@@ -220,70 +220,68 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
 
-    // ---------------- RENDER CART ----------------
-    function renderCart(){
+            // ---------------- RENDER CART ----------------
+        function renderCart() {
+            cartBody.innerHTML = '';
 
-        cartBody.innerHTML='';
+            if (!window.cart.length) {
+                cartBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-gray-400">Cart is empty</td>
+                    </tr>
+                `;
+                subtotalEl.innerText = '0.00';
+                taxEl.innerText = '0.00';
+                changeEl.innerText = '0.00';
+                productsInput.value = '';
+                return;
+            }
 
-        if(!window.cart.length){
+            // Build rows
+            window.cart.forEach((item, i) => {
+                const total = item.price * item.quantity;
 
-            cartBody.innerHTML=
-            `<tr><td colspan="5" class="text-center py-4 text-gray-400">Cart is empty</td></tr>`;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.name}</td>
+                    <td>KES ${item.price.toFixed(2)}</td>
+                    <td>
+                        <input type="number" min="1" max="${item.stock}" value="${item.quantity}" class="w-16 border rounded px-2">
+                    </td>
+                    <td>KES ${total.toFixed(2)}</td>
+                    <td>
+                        <button class="bg-red-500 text-white px-2 py-1 rounded">Remove</button>
+                    </td>
+                `;
 
-            subtotalEl.innerText='0.00';
-            taxEl.innerText='0.00';
-            changeEl.innerText='0.00';
-            productsInput.value='';
+                // Remove item
+                row.querySelector('button').onclick = () => {
+                    window.cart.splice(i, 1);
+                    renderCart();
+                };
 
-            return;
+                // Quantity change
+                row.querySelector('input').onchange = (e) => {
+                    let q = parseInt(e.target.value) || 1;
+                    if (q > item.stock) {
+                        Swal.fire('Stock limit', 'Cannot exceed stock', 'warning');
+                        q = item.stock;
+                    }
+                    item.quantity = q;
+                    renderCart();
+                };
+
+                cartBody.appendChild(row);
+            });
+
+            // ===== ENRICH: Totals include offline items =====
+            const subtotal = window.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+            subtotalEl.innerText = subtotal.toFixed(2);
+            taxEl.innerText = (subtotal * 0).toFixed(2); // currently 0%
+            productsInput.value = JSON.stringify(window.cart);
+
+            calculateChange();
         }
-
-        let subtotal=0;
-
-        window.cart.forEach((item,i)=>{
-
-            const total=item.price*item.quantity;
-            subtotal+=total;
-
-            const row=document.createElement('tr');
-
-            row.innerHTML=`
-                <td>${item.name}</td>
-                <td>KES ${item.price.toFixed(2)}</td>
-                <td><input type="number" min="1" max="${item.stock}" value="${item.quantity}" class="w-16 border rounded px-2"></td>
-                <td>KES ${total.toFixed(2)}</td>
-                <td><button class="bg-red-500 text-white px-2 py-1 rounded">Remove</button></td>
-            `;
-
-            row.querySelector('button').onclick=()=>{
-                window.cart.splice(i,1);
-                renderCart();
-            };
-
-            row.querySelector('input').onchange=(e)=>{
-
-                let q=parseInt(e.target.value)||1;
-
-                if(q>item.stock){
-                    Swal.fire('Stock limit','Cannot exceed stock','warning');
-                    q=item.stock;
-                }
-
-                item.quantity=q;
-                renderCart();
-            };
-
-            cartBody.appendChild(row);
-
-        });
-
-        subtotalEl.innerText=subtotal.toFixed(2);
-        taxEl.innerText='0.00';
-
-        productsInput.value=JSON.stringify(window.cart);
-
-        calculateChange();
-    }
 
 
     // ---------------- CHANGE ----------------

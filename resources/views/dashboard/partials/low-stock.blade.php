@@ -29,41 +29,52 @@
 
                 @foreach($lowStock as $inventory)
 
-                <tr class="hover:bg-gray-50">
+                    @php
+                        // Calculate pending offline sales for this product
+                        $pendingOffline = DB::table('offline_sales')
+                            ->where('synced', 0)
+                            ->whereJsonContains('sale_data->products', ['product_id' => $inventory->product_id])
+                            ->sum(DB::raw("JSON_EXTRACT(sale_data, '$.quantity')"));
 
-                    <td class="py-2 px-4 border font-medium">
-                        {{ $inventory->product->name }}
-                    </td>
+                        // Adjusted available quantity
+                        $availableQty = $inventory->quantity - $pendingOffline;
+                    @endphp
 
-                    <td class="py-2 px-4 border">
-                        {{ $inventory->product->sku ?? '-' }}
-                    </td>
+                    <tr class="hover:bg-gray-50">
 
-                    <td class="py-2 px-4 border text-center">
+                        <td class="py-2 px-4 border font-medium">
+                            {{ $inventory->product->name }}
+                        </td>
 
-                        @if($inventory->quantity == 0)
-                            <span class="bg-red-100 text-red-700 px-2 py-1 rounded text-sm font-semibold">
-                                OUT
-                            </span>
+                        <td class="py-2 px-4 border">
+                            {{ $inventory->product->sku ?? '-' }}
+                        </td>
 
-                        @elseif($inventory->quantity <= 3)
-                            <span class="bg-red-100 text-red-600 px-2 py-1 rounded text-sm font-semibold">
-                                {{ $inventory->quantity }}
-                            </span>
+                        <td class="py-2 px-4 border text-center">
 
-                        @else
-                            <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-sm font-semibold">
-                                {{ $inventory->quantity }}
-                            </span>
-                        @endif
+                            @if($availableQty <= 0)
+                                <span class="bg-red-100 text-red-700 px-2 py-1 rounded text-sm font-semibold">
+                                    OUT
+                                </span>
 
-                    </td>
+                            @elseif($availableQty <= 3)
+                                <span class="bg-red-100 text-red-600 px-2 py-1 rounded text-sm font-semibold">
+                                    {{ $availableQty }}
+                                </span>
 
-                    <td class="py-2 px-4 border text-center text-gray-600">
-                        {{ $lowStockThreshold }}
-                    </td>
+                            @else
+                                <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-sm font-semibold">
+                                    {{ $availableQty }}
+                                </span>
+                            @endif
 
-                </tr>
+                        </td>
+
+                        <td class="py-2 px-4 border text-center text-gray-600">
+                            {{ $lowStockThreshold }}
+                        </td>
+
+                    </tr>
 
                 @endforeach
 
