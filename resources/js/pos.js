@@ -299,12 +299,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
     // ---------------- CHECKOUT ----------------
-    form.addEventListener('submit', async function(e){
-
+form.addEventListener('submit', async function(e){
     e.preventDefault();
 
     try{
-
         if(!window.cart.length){
             Swal.fire('Cart empty','','warning');
             return;
@@ -312,37 +310,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (checkoutPending) {
             Swal.fire('Processing...','Please wait for the current sale to complete.','info');
-                return; // prevents duplicate submission
-            }
+            return;
+        }
 
-            // mark as pending
-            checkoutPending = true;
+        checkoutPending = true;
 
         const method=document.getElementById('payment_method').value;
         const subtotal=parseFloat(subtotalEl.innerText);
-
         let mpesaCode=null;
+        let cashGiven = parseFloat(cashInput.value) || 0;
 
         /* ================= CASH ================= */
-
         if(method==="Cash"){
-
-            const cash=parseFloat(cashInput.value);
-
-            if(!cash || cash<subtotal){
-                Swal.fire({
-                    icon:'error',
-                    title:'Cash required',
-                    text:'Customer must give enough cash'
-                });
+            if(!cashGiven || cashGiven<subtotal){
+                Swal.fire({icon:'error', title:'Cash required', text:'Customer must give enough cash'});
+                checkoutPending = false;
                 return;
             }
         }
 
         /* ================= MPESA ================= */
-
         if(method==="Mpesa"){
-
             const result = await Swal.fire({
                 title:'Enter Mpesa Confirmation Code',
                 input:'text',
@@ -353,38 +341,32 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if(!result.value){
                 Swal.fire('Mpesa code required','','error');
+                checkoutPending = false;
                 return;
             }
 
             mpesaCode=result.value;
+            cashGiven = subtotal; // treat MPESA as fully paid
         }
 
         /* ================= CREDIT ================= */
-
         if(method==="Credit"){
-
             const customer=document.getElementById('customer').value;
-
             if(!customer){
-                Swal.fire({
-                    icon:'error',
-                    title:'Select customer for credit sale'
-                });
+                Swal.fire({icon:'error', title:'Select customer for credit sale'});
+                checkoutPending = false;
                 return;
             }
+            cashGiven = 0; // credit sale, nothing collected
         }
 
         /* ================= SEND ================= */
-
         const payload={
             _token:document.querySelector('input[name=_token]').value,
             customer_id:document.getElementById('customer').value,
             payment_method:method,
             mpesa_code:mpesaCode,
-            products:window.cart.map(p=>({
-                id:p.id,
-                quantity:p.quantity
-            }))
+            products:window.cart.map(p=>({id:p.id, quantity:p.quantity}))
         };
 
         const res=await fetch(form.action,{
@@ -397,46 +379,51 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if(!data.success){
             Swal.fire('Checkout failed',JSON.stringify(data.message),'error');
+            checkoutPending = false;
             return;
         }
 
+        /* ================= AUTO-PRINT RECEIPT ================= */
+        const receiptData = {
+            ...data.receipt,
+            user: window.currentUserName || "Staff", // ensure staff name is included
+            cash: cashGiven,
+            change: Math.max(0, cashGiven - subtotal)
+        };
+
+        // ✅ AUTO PRINT immediately
+        window.printReceipt(receiptData);
+
+        // ✅ Optional: show quick success alert (non-blocking)
         Swal.fire({
             icon:'success',
             title:'SALE COMPLETED',
             html:`
                 <div style="font-size:18px">
-                    🧾 Receipt: <b>#${data.receipt.id}</b><br><br>
-                    💰 Total: <b>KES ${Number(data.receipt.total).toFixed(2)}</b>
+                    🧾 Receipt: <b>#${receiptData.id}</b><br>
+                    💰 Total: <b>KES ${Number(receiptData.total).toFixed(2)}</b><br>
+                    💵 Paid: <b>KES ${Number(receiptData.cash).toFixed(2)}</b><br>
+                    🔁 Change: <b>KES ${Number(receiptData.change).toFixed(2)}</b>
                 </div>
             `,
-            confirmButtonText:'🖨 Print Receipt',
-            confirmButtonColor:'#16a34a',
-            background:'#f0fdf4',
-            allowOutsideClick:false
-        }).then(()=>{
-
-            printReceipt(data.receipt);
-
-            window.cart=[];
-            renderCart();
-            cashInput.value='';
-
-            // ✅ reset pending flag & re-enable button
-            checkoutPending = false;
-            if (checkoutBtn) checkoutBtn.disabled = false;
+            timer:2000,
+            showConfirmButton:false,
+            background:'#f0fdf4'
         });
 
-    }
-    catch(err){
+        // ✅ Clear cart & reset form
+        window.cart=[];
+        renderCart();
+        cashInput.value='';
 
-        console.error(err);
-        Swal.fire('Checkout crashed','See console','error');
-
-        // reset pending flag so next checkout can proceed
         checkoutPending = false;
-        // re-enable checkout button
         if (checkoutBtn) checkoutBtn.disabled = false;
 
+    } catch(err){
+        console.error(err);
+        Swal.fire('Checkout crashed','See console','error');
+        checkoutPending = false;
+        if (checkoutBtn) checkoutBtn.disabled = false;
     }
 });
 
