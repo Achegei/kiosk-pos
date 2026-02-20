@@ -4,145 +4,84 @@ $store = config('store');
 
 @if(auth()->check() && auth()->user()->role === 'staff')
 
-<div class="bg-white shadow-xl rounded-2xl p-6">
+<div class="flex flex-col md:flex-row gap-6 p-6 bg-gray-50 min-h-screen">
 
-    <h3 class="text-2xl font-bold mb-6 text-gray-800">🛒 Smart POS</h3>
+    {{-- LEFT PANEL: CART + TOTALS --}}
+    <div class="flex-1 bg-white shadow-xl rounded-2xl p-6 flex flex-col">
 
-    <!-- 🟢🔴 ONLINE/OFFLINE STATUS -->
-    <div id="networkStatus" class="px-3 py-1 rounded text-white font-bold mb-4">
-        Checking...
-    </div>
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-bold text-gray-800">🛒 Smart POS</h3>
+            <div id="networkStatus" class="px-3 py-1 rounded font-bold text-white">Checking...</div>
+        </div>
 
-    <!-- ===== RECEIPT MODAL ===== -->
-    <div id="receiptModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white p-6 rounded shadow-lg w-96">
-            <h2 class="text-xl font-bold mb-4">Receipt</h2>
-            <div id="receiptContent" class="mb-4"></div>
-            <div id="receiptTotal" class="mb-4 font-bold text-right"></div>
-            <div class="flex justify-end gap-2">
-                <button id="printReceipt" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Print</button>
-                <button id="closeReceipt" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
+        {{-- Customer Selection --}}
+        <div class="mb-4">
+            <label class="font-semibold block mb-1">Customer</label>
+            <div class="flex gap-2">
+                <select id="customer" name="customer_id" class="w-full rounded-lg border-gray-300 shadow-sm">
+                    <option value="" selected>Walk-in Customer</option>
+                    @foreach($customers ?? [] as $customer)
+                        <option value="{{ $customer->id }}">
+                            {{ $customer->name }}
+                            @if($customer->phone)
+                                ({{ $customer->phone }})
+                            @endif
+                            {{ $customer->credit ?? '' }}
+                        </option>
+                    @endforeach
+                </select>
+                <button type="button" id="newCustomerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg shadow">
+                    + New
+                </button>
             </div>
         </div>
-    </div>
 
-    <!-- CUSTOMER -->
-    <div class="mb-6">
-        <label class="font-semibold block mb-1">Customer</label>
-        <div class="flex gap-2">
-            <select id="customer" name="customer_id" class="w-full rounded-lg border-gray-300 shadow-sm">
-                <option value="" selected>Walk-in Customer</option>
-                @foreach($customers ?? [] as $customer)
-                    <option value="{{ $customer->id }}">
-                        {{ $customer->name }}
-                        @if($customer->phone)
-                            ({{ $customer->phone }})
-                        @endif
-                        {{ $customer->credit ?? '' }}
-                    </option>
-                @endforeach
-            </select>
-            <button type="button" id="newCustomerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg shadow">
-                + New
-            </button>
-        </div>
-    </div>
-
-    <!-- SEARCH -->
-    <div class="relative mb-6 flex gap-2">
-        <input
-            id="productSearch"
-            placeholder="Scan barcode or search product..."
-            class="flex-1 p-4 text-lg rounded-xl border-2 border-indigo-200 focus:border-indigo-500"
-        >
-        <button id="addProductBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold">Add</button>
-        <ul id="suggestions" class="absolute top-full left-0 right-0 bg-white border rounded-xl shadow-xl hidden max-h-72 overflow-auto z-40"></ul>
-    </div>
-
-    <!-- CART TABLE -->
-    <div class="overflow-x-auto mb-6">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-100">
-                <tr>
-                    <th class="p-2 text-left">Product</th>
-                    <th>Price</th>
-                    <th>Qty</th>
-                    <th>Total</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="cartBody">
-
-                {{-- Merge online and offline cart items --}}
-                @php
-                    // onlineCartItems should come from JS/Livewire or session
-                    $offlineCartItems = $offlineCartItems ?? collect();
-
-                    // Merge offline items
-                    $mergedCart = $offlineCartItems->groupBy('product_id')->map(function($items, $productId) {
-                        $first = $items->first();
-                        return [
-                            'product_id' => $productId,
-                            'name' => $first['name'] ?? 'Unknown',
-                            'price' => $first['price'] ?? 0,
-                            'quantity' => $items->sum(fn($i) => $i['quantity'] ?? 0),
-                        ];
-                    });
-                @endphp
-
-                @forelse($mergedCart as $item)
-                    <tr class="hover:bg-gray-50">
-                        <td class="p-2">{{ $item['name'] }}</td>
-                        <td class="p-2">KES {{ number_format($item['price'],2) }}</td>
-                        <td class="p-2 text-center">{{ $item['quantity'] }}</td>
-                        <td class="p-2 text-right font-semibold">
-                            KES {{ number_format($item['price'] * $item['quantity'],2) }}
-                        </td>
-                        <td class="p-2 text-center">
-                            <button class="text-red-600 hover:text-red-800 removeItemBtn" data-id="{{ $item['product_id'] }}">❌</button>
-                        </td>
-                    </tr>
-                @empty
+        {{-- Cart Table --}}
+        <div class="overflow-x-auto mb-4 flex-1">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-100">
                     <tr>
-                        <td colspan="5" class="text-center p-4 text-gray-400">
-                            Your cart is empty
-                        </td>
+                        <th class="p-2 text-left">Product</th>
+                        <th>Price</th>
+                        <th>Qty</th>
+                        <th>Total</th>
+                        <th>Actions</th>
                     </tr>
-                @endforelse
+                </thead>
+                <tbody id="cartBody">
+                    {{-- Populated via JS --}}
+                </tbody>
+            </table>
+        </div>
 
-            </tbody>
-        </table>
-    </div>
-
-    <!-- TOTALS -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-xl mb-6">
-        <div>
-            <div class="text-xs text-gray-500">Subtotal</div>
-            <div class="text-xl font-bold">KES <span id="subtotal">0.00</span></div>
-        </div>
-        <div>
-            <div class="text-xs text-gray-500">Tax (0%)</div>
-            <div class="text-xl font-bold">KES <span id="tax">0.00</span></div>
-        </div>
-        <div>
-            <div class="text-xs text-gray-500">Cash Given</div>
-            <input id="cashGiven" type="number" class="w-full mt-1 rounded border p-2">
-        </div>
-        <div>
-            <div class="text-xs text-gray-500">Change</div>
-            <div class="text-2xl font-extrabold text-green-600">
-                KES <span id="change">0.00</span>
+        {{-- Totals --}}
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-xl mb-4">
+            <div>
+                <div class="text-xs text-gray-500">Subtotal</div>
+                <div class="text-xl font-bold">KES <span id="subtotal">0.00</span></div>
+            </div>
+            <div>
+                <div class="text-xs text-gray-500">Tax (0%)</div>
+                <div class="text-xl font-bold">KES <span id="tax">0.00</span></div>
+            </div>
+            <div>
+                <div class="text-xs text-gray-500">Cash Given</div>
+                <input id="cashGiven" type="number" class="w-full mt-1 rounded border p-2">
+            </div>
+            <div>
+                <div class="text-xs text-gray-500">Change</div>
+                <div class="text-2xl font-extrabold text-green-600">
+                    KES <span id="change">0.00</span>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- PAYMENT -->
-    <form id="checkoutForm" action="{{ route('transactions.pos_checkout') }}" method="POST">
-        @csrf
-        <input type="hidden" name="customer_id" id="customer_id">
-        <input type="hidden" name="products" id="products">
+        {{-- Checkout --}}
+        <form id="checkoutForm" action="{{ route('transactions.pos_checkout') }}" method="POST" class="flex gap-4 items-center">
+            @csrf
+            <input type="hidden" name="customer_id" id="customer_id">
+            <input type="hidden" name="products" id="products">
 
-        <div class="flex gap-4 items-center mb-4">
             <select name="payment_method" id="payment_method" class="rounded-lg border-gray-300 p-3">
                 <option value="Cash">Cash</option>
                 <option value="Mpesa">Mpesa</option>
@@ -152,23 +91,51 @@ $store = config('store');
             <button type="submit" class="px-10 py-4 bg-indigo-600 text-white rounded-xl text-lg font-bold hover:bg-indigo-700">
                 💳 CHECKOUT
             </button>
+        </form>
+
+    </div>
+
+    {{-- RIGHT PANEL: SEARCH + TOOLS --}}
+    <div class="w-full md:w-1/3 flex flex-col gap-4">
+
+        {{-- Product Search --}}
+        <div class="bg-white shadow-xl rounded-2xl p-4">
+            <input
+                id="productSearch"
+                placeholder="Scan barcode or search product..."
+                class="w-full p-4 text-lg rounded-xl border-2 border-indigo-200 focus:border-indigo-500"
+            >
+            <button id="addProductBtn" class="w-full mt-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold">
+                Add Product
+            </button>
+            <ul id="suggestions" class="hidden max-h-72 overflow-auto mt-2 bg-white rounded-xl shadow-xl border"></ul>
         </div>
-    </form>
+
+        {{-- Quick Assistive Calculator --}}
+        <div class="bg-white shadow-xl rounded-2xl p-4">
+            <div class="text-gray-600 font-semibold mb-2">Calculator</div>
+            <input type="text" id="quickCalcInput" placeholder="0" class="w-full p-3 rounded-xl border text-right text-lg font-mono mb-2">
+            <div class="grid grid-cols-4 gap-2">
+                @foreach(['7','8','9','C','4','5','6','/','1','2','3','*','0','.','=','-','+'] as $btn)
+                    <button class="calcBtn p-2 bg-gray-200 rounded @if(in_array($btn,['C','/','*','-','=','+'])) bg-indigo-600 text-white @endif">{{ $btn }}</button>
+                @endforeach
+            </div>
+        </div>
+
+        {{-- Offline Banner --}}
+        <div id="offlineBanner" class="hidden p-3 bg-yellow-100 border-l-4 border-yellow-500 rounded font-semibold">
+            ⚠ 0 sales pending sync
+        </div>
+
+    </div>
 
 </div>
 
 @push('scripts')
-
 <script>
-// ✅ MAKE LOGGED-IN STAFF AVAILABLE TO JS
 window.currentUserName = @json(auth()->user()->name ?? 'Staff');
-</script>
 
-@vite('resources/js/pos.js')
-
-<script>
-
-// ===== ENRICH: Initialize cart with offline items from server =====
+// Initialize offline cart safely
 @if(isset($offlineCartItems) && $offlineCartItems->count())
     @foreach($offlineCartItems as $item)
         window.cart.push({
@@ -182,7 +149,21 @@ window.currentUserName = @json(auth()->user()->name ?? 'Staff');
     renderCart();
 @endif
 
+// Barcode autofocus stay-ready
+const productSearch = document.getElementById('productSearch');
+function keepFocus() {
+    if(productSearch){
+        productSearch.focus();
+        productSearch.select();
+    }
+}
+document.getElementById('addProductBtn')?.addEventListener('click', ()=> setTimeout(keepFocus,50));
+productSearch?.addEventListener('keydown', (e)=> {
+    if(e.key==='Enter'){ setTimeout(keepFocus,50); }
+});
 </script>
 
+@vite('resources/js/pos.js')
 @endpush
+
 @endif

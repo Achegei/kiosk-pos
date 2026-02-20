@@ -771,3 +771,69 @@ updateNetworkStatus();
 // Listen for network changes
 window.addEventListener('online', updateNetworkStatus);
 window.addEventListener('offline', updateNetworkStatus);
+
+//barcode scanner support
+// ---------------- BARCODE AUTO-FOCUS & STAY-READY ----------------
+const productSearch = document.getElementById('productSearch');
+
+// Auto-focus on page load
+window.addEventListener('load', () => {
+    if (productSearch) {
+        productSearch.focus();
+    }
+});
+
+// Stay-ready mode: after adding product, cursor stays in search box
+function focusBarcodeInput() {
+    if (productSearch) {
+        productSearch.focus();
+        productSearch.select(); // highlight in case cashier wants to rescan
+    }
+}
+
+// Call focusBarcodeInput() after product is added to cart
+document.getElementById('addProductBtn')?.addEventListener('click', () => {
+    // existing add product logic runs...
+    // then:
+    setTimeout(focusBarcodeInput, 50); // tiny delay ensures UI updates first
+});
+
+// Also call after scanning via "Enter" or "Barcode scan" event
+productSearch?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+
+        // Trigger add product logic
+        document.getElementById('addProductBtn')?.click();
+
+        // Re-focus immediately
+        setTimeout(focusBarcodeInput, 50);
+    }
+});
+
+
+//calculator support
+document.querySelectorAll('.calcBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+        const input = document.getElementById('quickCalcInput');
+        const val = btn.textContent;
+
+        if(val === 'C'){
+            input.value = '';
+            return;
+        }
+
+        if(val === '='){
+            try {
+                // Safe eval: only digits, operators, dot
+                const safe = input.value.replace(/[^0-9+\-*/.]/g,'');
+                input.value = safe ? eval(safe) : '';
+            } catch {
+                input.value = 'Error';
+            }
+            return;
+        }
+
+        input.value += val;
+    });
+});
