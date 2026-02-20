@@ -17,10 +17,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const suggestions = document.getElementById('suggestions');
     const form = document.getElementById('checkoutForm');
     const productsInput = document.getElementById('products');
+    const checkoutBtn = form.querySelector('button[type="submit"]');
 
     // ---------------- GLOBAL CART ----------------
     window.cart = [];
-    let debounceTimeout=null, selectedIndex=-1, currentResults=[];
+    let debounceTimeout=null, selectedIndex=-1, currentResults=[],checkoutPending = false;
 
 
     // ---------------- FETCH PRODUCTS ----------------
@@ -311,6 +312,14 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
+        if (checkoutPending) {
+            Swal.fire('Processing...','Please wait for the current sale to complete.','info');
+                return; // prevents duplicate submission
+            }
+
+            // mark as pending
+            checkoutPending = true;
+
         const method=document.getElementById('payment_method').value;
         const subtotal=parseFloat(subtotalEl.innerText);
 
@@ -413,6 +422,10 @@ document.addEventListener("DOMContentLoaded", function () {
             window.cart=[];
             renderCart();
             cashInput.value='';
+
+            // ✅ reset pending flag & re-enable button
+            checkoutPending = false;
+            if (checkoutBtn) checkoutBtn.disabled = false;
         });
 
     }
@@ -420,6 +433,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
         console.error(err);
         Swal.fire('Checkout crashed','See console','error');
+
+        // reset pending flag so next checkout can proceed
+        checkoutPending = false;
+        // re-enable checkout button
+        if (checkoutBtn) checkoutBtn.disabled = false;
+
     }
 });
 
