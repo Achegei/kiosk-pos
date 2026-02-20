@@ -16,6 +16,7 @@ use App\Models\StockMovement;
 use App\Models\Device;
 use App\Models\Setting;
 use App\Models\TransactionPayment;
+use App\Observers\TransactionItemObserver;
 
 
 // ✅ IMPORT OBSERVER
@@ -49,5 +50,6 @@ class AppServiceProvider extends ServiceProvider
         Device::observe(GlobalAuditObserver::class);
         Setting::observe(GlobalAuditObserver::class);
         TransactionPayment::observe(GlobalAuditObserver::class);
+        TransactionItem::observe(TransactionItemObserver::class);
     }
 }
