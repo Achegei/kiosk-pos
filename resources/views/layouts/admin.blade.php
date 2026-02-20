@@ -27,6 +27,7 @@
                 <a href="{{ route('customers.index') }}" class="block px-6 py-3 text-gray-700 hover:bg-gray-100">Customers</a>
                 <a href="{{ route('transactions.index') }}" class="block px-6 py-3 text-gray-700 hover:bg-gray-100">Transactions</a>
                 <a href="{{ route('inventories.index') }}" class="block px-6 py-3 text-gray-700 hover:bg-gray-100">Inventory</a>
+                 <a href="{{ route('staff.index') }}" class="block px-6 py-3 text-gray-700 hover:bg-gray-100">Staff</a>
             </nav>
         </aside>
 

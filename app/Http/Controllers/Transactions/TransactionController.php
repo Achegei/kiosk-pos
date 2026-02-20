@@ -223,31 +223,47 @@ class TransactionController extends Controller
     ======================================== */
 
     public function destroy(Transaction $transaction)
-    {
-        DB::transaction(function() use ($transaction){
+{
+    DB::transaction(function() use ($transaction){
 
-            foreach($transaction->items as $item){
+        foreach($transaction->items as $item){
 
-                $inventory = Inventory::where('product_id',$item->product_id)
-                    ->lockForUpdate()
-                    ->first();
+            // Lock inventory row
+            $inventory = Inventory::where('product_id', $item->product_id)
+                ->lockForUpdate()
+                ->first();
 
-                if($inventory){
-                    $inventory->increment('quantity',$item->quantity);
-                }
+            if($inventory){
+                // Restore stock
+                $inventory->increment('quantity', $item->quantity);
+
+                // 🔹 Log stock movement reversal
+                \App\Models\StockMovement::create([
+                    'product_id' => $item->product_id,
+                    'user_id' => auth()->id(),
+                    'change' => $item->quantity, // positive because stock is restored
+                    'type' => 'restock',
+                    'reference' => 'Transaction #'.$transaction->id,
+                ]);
             }
+        }
 
-            if($transaction->payment_method==='Credit' && $transaction->customer_id){
-                Customer::find($transaction->customer_id)
-                    ->decrement('credit',$transaction->total_amount);
-            }
+        // Reverse credit if applicable
+        if($transaction->payment_method === 'Credit' && $transaction->customer_id){
+            Customer::find($transaction->customer_id)
+                ->decrement('credit', $transaction->total_amount);
+        }
 
-            $transaction->delete();
-        });
+        // Delete associated transaction payments
+        $transaction->payments()->delete();
 
-        return redirect()
-            ->route('transactions.index')
-            ->with('success','Transaction deleted successfully!');
-    }
+        // Delete transaction (audit will record)
+        $transaction->delete();
+    });
+
+    return redirect()
+        ->route('transactions.index')
+        ->with('success','Transaction deleted successfully and stock restored!');
+}
 
 }

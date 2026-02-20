@@ -21,7 +21,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role', // <-- Add role to fillable for mass assignment
+        'role',       // role for RBAC
+        'can_pos',    // <-- new: staff POS permission (boolean)
     ];
 
     /**
@@ -35,15 +36,16 @@ class User extends Authenticatable
     ];
 
     /**
-     * Get the attributes that should be cast.
+     * Cast attributes
      *
-     * @return array<string, string>
+     * @return array<string,string>
      */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'can_pos' => 'boolean', // cast can_pos to boolean
         ];
     }
 
@@ -75,5 +77,26 @@ class User extends Authenticatable
     public function isStaff(): bool
     {
         return $this->role === 'staff';
+    }
+
+    /**
+     * Return roles this user can create/manage
+     */
+    public static function creatableRoles(User $user): array
+    {
+        return match ($user->role) {
+            'super_admin' => ['admin', 'supervisor', 'staff'],
+            'admin'       => ['supervisor', 'staff'],
+            'supervisor'  => ['staff'],
+            default       => [],
+        };
+    }
+
+    /**
+     * Check if user can access POS
+     */
+    public function canAccessPos(): bool
+    {
+        return $this->can_pos && $this->isStaff();
     }
 }
