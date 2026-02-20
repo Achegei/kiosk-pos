@@ -77,8 +77,8 @@ class InventoryController extends Controller
      */
     public function edit(Inventory $inventory)
     {
-        // product should NOT be changeable normally
-        return view('inventories.edit', compact('inventory'));
+        $products = Product::all();
+        return view('inventories.edit', compact('inventory', 'products'));
     }
 
 

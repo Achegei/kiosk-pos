@@ -1,3 +1,4 @@
+@if(auth()->check() && auth()->user()->role === 'staff')
 
 <div class="bg-white shadow-xl rounded-2xl p-6">
 
@@ -17,30 +18,32 @@
     </div>
 
     <!-- CUSTOMER -->
-<div class="mb-6">
-    <label class="font-semibold block mb-1">Customer</label>
+    <div class="mb-6">
+        <label class="font-semibold block mb-1">Customer</label>
 
-    <div class="flex gap-2">
+        <div class="flex gap-2">
 
-        <select id="customer" name="customer_id" class="w-full rounded-lg border-gray-300 shadow-sm">
-            <option value="" selected>Walk-in Customer</option>
-            @foreach($customers as $customer)
-                <option value="{{ $customer->id }}">
-                    {{ $customer->name }} @if($customer->phone) ({{ $customer->phone }}) {{$customer->credit}} @endif
-                </option>
-            @endforeach
-        </select>
+            <select id="customer" name="customer_id" class="w-full rounded-lg border-gray-300 shadow-sm">
+                <option value="" selected>Walk-in Customer</option>
 
+                @foreach($customers ?? [] as $customer)
+                    <option value="{{ $customer->id }}">
+                        {{ $customer->name }}
+                        @if($customer->phone)
+                            ({{ $customer->phone }})
+                        @endif
+                        {{ $customer->credit ?? '' }}
+                    </option>
+                @endforeach
 
-        <!-- QUICK ADD BUTTON -->
-        <button type="button" id="newCustomerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg shadow">
-            + New
-        </button>
+            </select>
 
+            <button type="button" id="newCustomerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg shadow">
+                + New
+            </button>
+
+        </div>
     </div>
-</div>
-
-
 
     <!-- SEARCH -->
     <div class="relative mb-6 flex gap-2">
@@ -51,7 +54,6 @@
         >
         <button id="addProductBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold">Add</button>
 
-        <!-- Live suggestions dropdown -->
         <ul id="suggestions" class="absolute top-full left-0 right-0 bg-white border rounded-xl shadow-xl hidden max-h-72 overflow-auto z-40"></ul>
     </div>
 
@@ -71,7 +73,7 @@
         </table>
     </div>
 
-    <!-- POS GRID (Totals / Cash / Change) -->
+    <!-- TOTALS -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-xl mb-6">
         <div>
             <div class="text-xs text-gray-500">Subtotal</div>
@@ -93,7 +95,7 @@
         </div>
     </div>
 
-    <!-- PAYMENT FORM -->
+    <!-- PAYMENT -->
     <form id="checkoutForm" action="{{ route('transactions.pos_checkout') }}" method="POST">
         @csrf
         <input type="hidden" name="customer_id" id="customer_id">
@@ -111,7 +113,11 @@
             </button>
         </div>
     </form>
+
 </div>
+
 @push('scripts')
 @vite('resources/js/pos.js')
 @endpush
+
+@endif

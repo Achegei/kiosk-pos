@@ -1,56 +1,87 @@
 @extends('layouts.admin')
 
+@section('title', 'Customers')
 @section('content')
-<div class="container mx-auto py-8">
-    <div class="flex justify-between items-center mb-6">
-        <h2 class="text-2xl font-bold">Customers</h2>
-        <a href="{{ route('customers.create') }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Add Customer</a>
-    </div>
+<div class="overflow-x-auto">
 
-    @if(session('success'))
-        <div class="bg-green-100 text-green-700 p-3 rounded mb-4">
-            {{ session('success') }}
-        </div>
-    @endif
+    <table class="min-w-full bg-white border">
 
-    <div class="overflow-x-auto bg-white shadow rounded-lg">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-sm font-medium text-gray-500">Name</th>
-                    <th class="px-6 py-3 text-left text-sm font-medium text-gray-500">Phone</th>
-                    <th class="px-6 py-3 text-left text-sm font-medium text-gray-500">Email</th>
-                    <th class="px-6 py-3 text-left text-sm font-medium text-gray-500">Credit (KSh)</th>
-                    <th class="px-6 py-3 text-center text-sm font-medium text-gray-500">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200">
-                @forelse($customers as $customer)
-                    <tr>
-                        <td class="px-6 py-4">{{ $customer->name }}</td>
-                        <td class="px-6 py-4">{{ $customer->phone }}</td>
-                        <td class="px-6 py-4">{{ $customer->email ?? '-' }}</td>
-                        <td class="px-6 py-4">{{ number_format($customer->credit, 2) }}</td>
-                        <td class="px-6 py-4 text-center">
-                            <a href="{{ route('customers.edit', $customer) }}" class="text-blue-600 hover:underline mr-2">Edit</a>
-                            <form action="{{ route('customers.destroy', $customer) }}" method="POST" class="inline">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="text-red-600 hover:underline" onclick="return confirm('Are you sure?')">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="5" class="px-6 py-4 text-center text-gray-500">No customers found.</td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+        <thead class="bg-gray-100">
+            <tr>
+                <th class="py-2 px-4 border text-left">Name</th>
+                <th class="py-2 px-4 border text-left">Phone</th>
+                <th class="py-2 px-4 border text-left">Email</th>
+                <th class="py-2 px-4 border text-center">Credit (KSh)</th>
+                <th class="py-2 px-4 border text-center">Actions</th>
+            </tr>
+        </thead>
 
-    <div class="mt-4">
-        {{ $customers->links() }}
-    </div>
+        <tbody>
+
+        @forelse($customers as $customer)
+
+            <tr class="hover:bg-gray-50">
+
+                <td class="py-2 px-4 border font-medium">
+                    {{ $customer->name }}
+                </td>
+
+                <td class="py-2 px-4 border">
+                    {{ $customer->phone }}
+                </td>
+
+                <td class="py-2 px-4 border">
+                    {{ $customer->email ?? '-' }}
+                </td>
+
+                <td class="py-2 px-4 border text-center">
+                    @if($customer->credit <= 0)
+                        <span class="bg-red-100 text-red-700 px-2 py-1 rounded text-sm font-semibold">
+                            {{ number_format($customer->credit, 2) }}
+                        </span>
+                    @else
+                        {{ number_format($customer->credit, 2) }}
+                    @endif
+                </td>
+
+                <td class="py-2 px-4 border text-center whitespace-nowrap">
+
+                    <a href="{{ route('customers.edit', $customer->id) }}"
+                       class="text-blue-600 font-semibold mr-3">
+                       Edit
+                    </a>
+
+                    <form action="{{ route('customers.destroy', $customer->id) }}"
+                          method="POST"
+                          class="inline">
+                        @csrf
+                        @method('DELETE')
+
+                        <button type="submit"
+                                class="text-red-600 font-semibold"
+                                onclick="return confirm('Delete this customer?')">
+                            Delete
+                        </button>
+                    </form>
+
+                </td>
+
+            </tr>
+
+        @empty
+
+            <tr>
+                <td colspan="5"
+                    class="py-6 text-center text-gray-400 border">
+                    No customers found
+                </td>
+            </tr>
+
+        @endforelse
+
+        </tbody>
+
+    </table>
+
 </div>
 @endsection

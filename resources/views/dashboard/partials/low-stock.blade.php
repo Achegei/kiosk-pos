@@ -1,34 +1,76 @@
-<div class="bg-white shadow rounded-lg p-6 mt-6">
-    <h3 class="text-lg font-semibold text-gray-700 mb-4">Low Stock Alerts</h3>
+<div class="bg-gray-50 p-4 rounded shadow mt-6">
+
+    <h2 class="text-xl font-semibold mb-4 text-indigo-700">Low Stock Alerts</h2>
 
     @if($lowStock->isEmpty())
-        <p class="text-gray-500">All products have sufficient stock.</p>
-    @else
-        <p class="text-gray-600 mb-2">
-    Products below the low stock threshold ({{ $lowStockThreshold }} units)
-        </p>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-100">
-                    <tr>
-                        <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Product</th>
-                        <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">SKU / Barcode</th>
-                        <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Quantity</th>
-                        <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Threshold</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200">
-                    @foreach($lowStock as $inventory)
-                        <tr>
-                            <td class="px-4 py-2 font-medium">{{ $inventory->product->name }}</td>
-                            <td class="px-4 py-2">{{ $inventory->product->sku ?? '-' }}</td>
-                            <td class="px-4 py-2 text-red-600 font-semibold">{{ $inventory->quantity }}</td>
-                            <td class="px-4 py-2 text-gray-600">{{ $lowStockThreshold }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
+
+        <div class="bg-white border rounded p-6 text-center text-gray-400">
+            All products have sufficient stock
         </div>
 
+    @else
+
+        <p class="text-gray-600 mb-3">
+            Products below the low stock threshold ({{ $lowStockThreshold }} units)
+        </p>
+
+        <table class="min-w-full bg-white border">
+
+            <thead class="bg-gray-100">
+                <tr>
+                    <th class="py-2 px-4 border text-left">Product</th>
+                    <th class="py-2 px-4 border text-left">SKU / Barcode</th>
+                    <th class="py-2 px-4 border text-center">Quantity</th>
+                    <th class="py-2 px-4 border text-center">Threshold</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                @foreach($lowStock as $inventory)
+
+                <tr class="hover:bg-gray-50">
+
+                    <td class="py-2 px-4 border font-medium">
+                        {{ $inventory->product->name }}
+                    </td>
+
+                    <td class="py-2 px-4 border">
+                        {{ $inventory->product->sku ?? '-' }}
+                    </td>
+
+                    <td class="py-2 px-4 border text-center">
+
+                        @if($inventory->quantity == 0)
+                            <span class="bg-red-100 text-red-700 px-2 py-1 rounded text-sm font-semibold">
+                                OUT
+                            </span>
+
+                        @elseif($inventory->quantity <= 3)
+                            <span class="bg-red-100 text-red-600 px-2 py-1 rounded text-sm font-semibold">
+                                {{ $inventory->quantity }}
+                            </span>
+
+                        @else
+                            <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-sm font-semibold">
+                                {{ $inventory->quantity }}
+                            </span>
+                        @endif
+
+                    </td>
+
+                    <td class="py-2 px-4 border text-center text-gray-600">
+                        {{ $lowStockThreshold }}
+                    </td>
+
+                </tr>
+
+                @endforeach
+
+            </tbody>
+
+        </table>
+
     @endif
+
 </div>

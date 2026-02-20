@@ -10,9 +10,13 @@ class ProductController extends Controller
 {
     public function index()
     {
-        $products = Product::with('inventory')->get();
+        // Get products with inventory relation, ordered by newest first
+        $products = Product::with('inventory')->orderBy('created_at', 'desc')->paginate(10);
+
+        // Pass to view
         return view('products.index', compact('products'));
     }
+
 
     public function create()
     {

@@ -16,7 +16,4 @@
     {{-- Recent Transactions --}}
     @include('dashboard.partials.recent-transactions')
 </div>
-
-{{-- POS JS --}}
-@include('dashboard.partials.pos-js')
 @endsection
