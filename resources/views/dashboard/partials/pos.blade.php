@@ -1,3 +1,7 @@
+@php
+$store = config('store');
+@endphp
+
 @if(auth()->check() && auth()->user()->role === 'staff')
 
 <div class="bg-white shadow-xl rounded-2xl p-6">
@@ -154,21 +158,31 @@
 </div>
 
 @push('scripts')
-@vite('resources/js/pos.js')
-  <script>
-    // ===== ENRICH: Initialize cart with offline items from server =====
-    @if(isset($offlineCartItems) && $offlineCartItems->count())
-        @foreach($offlineCartItems as $item)
-            window.cart.push({
-                id: {{ $item['product_id'] }},
-                name: "{{ $item['name'] }}",
-                price: {{ $item['price'] }},
-                quantity: {{ $item['quantity'] }},
-                stock: {{ $item['stock'] ?? 1000 }} // fallback stock
-            });
-        @endforeach
-        renderCart(); // make sure cart UI reflects these items
-    @endif
+
+<script>
+// ✅ MAKE LOGGED-IN STAFF AVAILABLE TO JS
+window.currentUserName = @json(auth()->user()->name ?? 'Staff');
 </script>
+
+@vite('resources/js/pos.js')
+
+<script>
+
+// ===== ENRICH: Initialize cart with offline items from server =====
+@if(isset($offlineCartItems) && $offlineCartItems->count())
+    @foreach($offlineCartItems as $item)
+        window.cart.push({
+            id: {{ $item['product_id'] }},
+            name: "{{ $item['name'] }}",
+            price: {{ $item['price'] }},
+            quantity: {{ $item['quantity'] }},
+            stock: {{ $item['stock'] ?? 1000 }}
+        });
+    @endforeach
+    renderCart();
+@endif
+
+</script>
+
 @endpush
 @endif

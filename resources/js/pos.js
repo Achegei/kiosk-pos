@@ -440,38 +440,114 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 });
 
+// ---------------- PRINT RECEIPT ----------------
+window.printReceipt = function(receipt){
 
-    //printReceipt function to open a new window with the receipt details and trigger the print dialog
-    window.printReceipt = function(receipt){
+const STORE = {
+    name: "SMART SHOP SUPERMARKET",
+    address: "Kiambu Road, Nairobi",
+    phone: "0712345678",
+    footer: "Thank you for shopping with us!"
+};
 
-    let html = `
-    <div style="font-family:monospace;padding:20px">
-        <h2 style="text-align:center">STORE RECEIPT</h2>
-        <hr>
-        Receipt #: ${receipt.id}<br>
-        Date: ${new Date().toLocaleString()}<br>
-        <hr>
+// ✅ FORCE STAFF NAME FROM GLOBAL (fallback safe)
+const staffName = receipt.user || window.currentUserName || "Staff";
+
+// ✅ CASH + CHANGE SAFE VALUES
+const cashTaken = receipt.cash ?? document.getElementById('cashGiven')?.value ?? 0;
+const changeGiven = receipt.change ?? document.getElementById('change')?.innerText ?? 0;
+
+let items = '';
+
+receipt.items?.forEach(item=>{
+    items += `
+        <div class="row">
+            <div>${item.name}</div>
+            <div>${item.qty} x ${item.price}</div>
+        </div>
+        <div class="row total">
+            <div></div>
+            <div>KES ${item.total}</div>
+        </div>
     `;
+});
 
-    receipt.items?.forEach(item=>{
-        html += `
-        ${item.name}<br>
-        ${item.qty} x ${item.price} = ${item.total}<br><br>
-        `;
-    });
+const html = `
+<html>
+<head>
+<title>Receipt</title>
 
-    html += `
-        <hr>
-        <h3>TOTAL: KES ${receipt.total}</h3>
-    </div>
-    `;
+<style>
+body{
+    font-family: monospace;
+    width:80mm;
+    margin:auto;
+    padding:10px;
+}
+.center{text-align:center;}
+.row{display:flex;justify-content:space-between;font-size:13px;}
+.total{font-weight:bold;}
+hr{border-top:1px dashed #000;}
+.big{
+    font-size:18px;
+    font-weight:bold;
+    text-align:center;
+    margin-top:10px;
+}
+</style>
 
-    const w = window.open('', '', 'width=400,height=600');
+</head>
 
-    w.document.write(html);
-    w.document.close();
+<body>
 
-    setTimeout(()=>w.print(),500);
+<div class="center">
+    <div style="font-size:20px;font-weight:bold">${STORE.name}</div>
+    ${STORE.address}<br>
+    Tel: ${STORE.phone}
+</div>
+
+<hr>
+
+Receipt #: ${receipt.id}<br>
+Date: ${new Date().toLocaleString('en-KE',{timeZone:'Africa/Nairobi'})}<br>
+
+<!-- ✅ NEW PROFESSIONAL TEXT -->
+You were served by: ${staffName}
+
+<hr>
+
+${items}
+
+<hr>
+
+<div class="big">
+TOTAL: KES ${receipt.total}
+</div>
+
+Paid via: ${receipt.payment ?? 'Cash'}<br>
+Cash received: KES ${cashTaken}<br>
+Change given: KES ${changeGiven}
+
+<hr>
+
+<div class="center">
+${STORE.footer}
+</div>
+
+</body>
+</html>
+`;
+
+const w = window.open('', '', 'width=340,height=700');
+
+w.document.write(html);
+w.document.close();
+
+setTimeout(()=>{
+    w.focus();
+    w.print();
+},400);
+
 };
 
 
