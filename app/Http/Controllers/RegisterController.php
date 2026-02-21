@@ -30,7 +30,8 @@ class RegisterController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Register opened successfully',
-            'register_session_id' => $session->id
+            'register_session_id' => $session->id,
+            'redirect' => route('dashboard') // <-- add this
         ]);
     }
 

@@ -9,11 +9,12 @@ $store = config('store');
 @endphp
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
-
 {{-- OPEN REGISTER MODAL --}}
 <div id="openRegisterModal" class="fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 {{ $openRegister ? 'hidden' : '' }}">
     <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl transition-all duration-300">
         <h2 class="text-xl font-bold mb-4">🧾 Open Register</h2>
+
+        {{-- Open Register Form --}}
         <form id="openRegisterForm">
             @csrf
             <div class="mb-4">
@@ -23,14 +24,27 @@ $store = config('store');
             <button type="submit" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 mb-2">
                 Open Register
             </button>
-
-            <!-- Cancel / Go to Dashboard -->
-            <button type="button" class="w-full py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-100" id="cancelOpenRegister">
-                Cancel / Dashboard
-            </button>
         </form>
+
+        {{-- Log Out Button --}}
+        <a href="#" id="logoutBtn" class="w-full block text-center py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-100 text-red-600">
+            Log Out
+        </a>
+
+        {{-- Hidden logout form --}}
+        <form id="logoutForm" method="POST" action="{{ route('logout') }}">
+            @csrf
+        </form>
+
+        <script>
+        document.getElementById('logoutBtn')?.addEventListener('click', function(e){
+            e.preventDefault();
+            document.getElementById('logoutForm').submit();
+        });
+        </script>
     </div>
 </div>
+
 
 {{-- POS MAIN LAYOUT --}}
 <div class="flex flex-col md:flex-row gap-6 p-6 bg-gray-50 min-h-screen">
@@ -158,35 +172,42 @@ $store = config('store');
 {{-- CLOSE REGISTER MODAL --}}
 @if($openRegister && $openRegister->status === 'open')
 <div id="closeRegisterModal" class="hidden fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300">
-    <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl">
-        <h2 class="text-xl font-bold mb-4">🧾 Close Register</h2>
+    <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl overflow-auto" style="max-height: 90vh;">
+        <h2 class="text-xl font-bold mb-4 text-center">🧾 Close Register</h2>
+
+        <div class="mb-2 font-semibold">Cashier: {{ auth()->user()->name }}</div>
+
         <form id="closeRegisterForm" method="POST" action="{{ route('register.close') }}">
             @csrf
 
             <div class="mb-2">Opening Cash: KES <span id="openingCash">{{ number_format($openRegister->opening_cash, 2) }}</span></div>
             <div class="mb-2">Cash Sales: KES <span id="cashTotal">0.00</span></div>
             <div class="mb-2">Mpesa Sales: KES <span id="mpesaTotal">0.00</span></div>
-            <div class="mb-2">Credit Sales: KES <span id="creditTotal">0.00</span></div>
-            
-            <div class="mb-2 font-bold">Expected Cash: KES <span id="expectedCash">0.00</span></div>
-            <div class="mb-2 font-bold">Expected Mpesa: KES <span id="expectedMpesa">0.00</span></div>
             <div class="mb-2 font-bold">Total Cash + Mpesa: KES <span id="totalCashMpesa">0.00</span></div>
-            <div class="mb-2 font-bold">Grand Total (Opening Cash + Cash + Mpesa): KES <span id="grandTotalCash">0.00</span></div>
+            <div class="mb-2 font-bold">Grand Total (Opening + Cash + Mpesa): KES <span id="grandTotalCash">0.00</span></div>
+            <div class="mb-2">Credit Sales: KES <span id="creditTotal">0.00</span></div>
 
             <div id="creditCustomersContainer" class="mb-2 hidden">
                 <div class="font-semibold">Credit Customers:</div>
                 <ul id="creditCustomersList" class="mb-2 list-disc list-inside text-gray-700"></ul>
             </div>
 
+            <div class="mb-2 font-bold">Expected Cash: KES <span id="expectedCash">0.00</span></div>
+            <div class="mb-2 font-bold">Expected Mpesa: KES <span id="expectedMpesa">0.00</span></div>
+
             <div class="mb-4">
                 <label class="block font-semibold mb-1">Closing Cash</label>
                 <input type="number" name="closing_cash" required class="w-full rounded-lg border p-2">
             </div>
 
+            <div class="mb-2 mt-4">
+                <label class="block font-semibold mb-1">Notes / Supervisor Signature</label>
+                <input type="text" name="notes" placeholder="Supervisor/Remarks" class="w-full rounded-lg border p-2">
+            </div>
+
             <button type="submit" class="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 mb-2">
                 Close Register
             </button>
-
             <!-- Cancel / Go to Dashboard -->
             <button type="button" class="w-full py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-100" id="cancelCloseRegister">
                 Cancel / Dashboard
@@ -195,6 +216,7 @@ $store = config('store');
     </div>
 </div>
 @endif
+
 
 {{-- JS --}}
 <script>
@@ -211,7 +233,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
                     'Accept':'application/json'
                 },
-                body: formData
+                body: formData,
+                credentials: 'same-origin'
             });
             const data = await res.json();
             if(res.ok && data.success){
@@ -288,15 +311,18 @@ window.getCurrentRegisterTotals = function(){
 
 function updateRegisterModal(){
     const totals = window.getCurrentRegisterTotals();
+
+    // existing totals
     document.getElementById('cashTotal').textContent = totals.cash.toFixed(2);
     document.getElementById('mpesaTotal').textContent = totals.mpesa.toFixed(2);
     document.getElementById('creditTotal').textContent = totals.credit.toFixed(2);
-    document.getElementById('expectedCash').textContent = totals.expectedCash.toFixed(2);
-    document.getElementById('expectedMpesa').textContent = totals.expectedMpesa.toFixed(2);
-    document.getElementById('totalCashMpesa').textContent = totals.totalCashMpesa.toFixed(2);
+    document.getElementById('expectedCash').textContent = (totals.openingCash + totals.cash).toFixed(2);
+    document.getElementById('expectedMpesa').textContent = totals.mpesa.toFixed(2);
+    
+    const totalCashMpesa = totals.cash + totals.mpesa;
+    document.getElementById('totalCashMpesa').textContent = totalCashMpesa.toFixed(2);
 
-    // NEW GRAND TOTAL
-    const grandTotal = totals.openingCash + totals.totalCashMpesa;
+    const grandTotal = totals.openingCash + totalCashMpesa;
     document.getElementById('grandTotalCash').textContent = grandTotal.toFixed(2);
 
     const container=document.getElementById('creditCustomersContainer');
@@ -309,9 +335,8 @@ function updateRegisterModal(){
             li.textContent=`${tx.customerName}: KES ${parseFloat(tx.amount).toFixed(2)}`;
             list.appendChild(li);
         });
-    }else container.classList.add('hidden');
+    } else container.classList.add('hidden');
 }
-
 
 window.addEventListener('transactionCompleted', updateRegisterModal);
 

@@ -7,5 +7,5 @@
     <!--<include('dashboard.partials.pos')-->
 </div>
 
-@include('dashboard.partials.pos-js')
+@include('dashboard.admin')
 @endsection
