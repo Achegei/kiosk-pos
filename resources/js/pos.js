@@ -383,6 +383,9 @@ form.addEventListener('submit', async function(e){
             return;
         }
 
+        /* 🔥 ADD THIS LINE RIGHT HERE */
+        window.dispatchEvent(new Event('transactionCompleted'));
+
         /* ================= AUTO-PRINT RECEIPT ================= */
         const receiptData = {
             ...data.receipt,
@@ -411,10 +414,32 @@ form.addEventListener('submit', async function(e){
             background:'#f0fdf4'
         });
 
-        // ✅ Clear cart & reset form
+                /* ================= REGISTER TRACKING FIX ================= */
+
+        // calculate subtotal again
+        const subtotalValue = parseFloat(subtotalEl.innerText) || 0;
+
+        // store sale for register totals
+        let queue = JSON.parse(localStorage.getItem('offline_sales_queue') || '[]');
+
+        queue.push({
+            subtotal: subtotalValue,
+            payment_method: method,
+            customer_id: document.getElementById('customer').value || null,
+            customer_name: document.querySelector('#customer option:checked')?.text || 'Walk-in'
+        });
+
+        localStorage.setItem('offline_sales_queue', JSON.stringify(queue));
+
+        // 🔥 notify register modal to refresh totals
+        window.dispatchEvent(new Event('transactionCompleted'));
+
+
+        /* ================= NORMAL RESET ================= */
         window.cart=[];
         renderCart();
         cashInput.value='';
+
 
         checkoutPending = false;
         if (checkoutBtn) checkoutBtn.disabled = false;

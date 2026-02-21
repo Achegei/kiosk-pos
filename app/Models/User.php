@@ -79,6 +79,17 @@ class User extends Authenticatable
         return $this->role === 'staff';
     }
 
+    public function registerSessions()
+    {
+        return $this->hasMany(RegisterSession::class);
+    }
+
+    public function openRegister()
+    {
+        return $this->hasOne(RegisterSession::class)->where('status','open');
+    }
+
+
     /**
      * Return roles this user can create/manage
      */

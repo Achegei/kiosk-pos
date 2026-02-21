@@ -108,7 +108,7 @@ class TransactionController extends Controller
        🔥 POS CHECKOUT (ULTRA SAFE VERSION)
     ======================================== */
 
-    public function posCheckout(Request $request)
+   public function posCheckout(Request $request)
 {
     try {
 
@@ -118,12 +118,19 @@ class TransactionController extends Controller
             'products.*.quantity'=>'required|integer|min:1',
             'customer_id'=>'nullable|exists:customers,id',
             'payment_method'=>'required|in:Cash,Mpesa,Credit',
-            'mpesa_code'=>'nullable|string|max:10',
+            'mpesa_code'=>'nullable|string|max:20',
         ]);
 
         $receipt = null;
 
         DB::transaction(function() use ($request,&$receipt){
+
+            // ✅ GET OPEN REGISTER SESSION
+            $session = auth()->user()->openRegister;
+
+            if(!$session){
+                throw new \Exception("Register is not open. Please open register first.");
+            }
 
             $total = 0;
 
@@ -131,12 +138,15 @@ class TransactionController extends Controller
                 throw new \Exception("Credit sale requires customer");
             }
 
+            // ✅ ATTACH REGISTER SESSION HERE
             $transaction = Transaction::create([
                 'customer_id'=>$request->customer_id,
                 'total_amount'=>0,
                 'payment_method'=>$request->payment_method,
                 'mpesa_code'=>$request->mpesa_code ?? null,
-                'status'=>$request->payment_method==='Credit' ? 'On Credit':'Paid'
+                'status'=>$request->payment_method==='Credit' ? 'On Credit':'Paid',
+                'register_session_id'=>$session->id,   // ⭐ NEW LINE
+                'user_id'=>auth()->id()               // ⭐ STRONGLY RECOMMENDED FOR AUDIT
             ]);
 
             foreach($request->products as $row){
@@ -175,7 +185,7 @@ class TransactionController extends Controller
                 Customer::find($request->customer_id)->increment('credit',$total);
             }
 
-            // 🔹 NEW: create transaction payment so table & audit log record it
+            // ✅ PAYMENT RECORD
             TransactionPayment::create([
                 'transaction_id' => $transaction->id,
                 'amount' => $total,
@@ -208,6 +218,7 @@ class TransactionController extends Controller
             'message'=>$e->errors()
         ],422);
     } catch(\Throwable $e){
+
         \Log::error("POS ERROR ".$e->getMessage());
 
         return response()->json([

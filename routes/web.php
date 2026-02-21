@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\SettingsController;
@@ -32,6 +33,17 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login']);
     Route::get('/admin/login', [AuthController::class, 'showLogin']);
+
+});
+/// Register routes (open/close) - can be accessed by authenticated users, but handled via AJAX
+Route::middleware('auth')->group(function () {
+    // Open register via AJAX
+    Route::post('/register/open', [RegisterController::class,'open'])->name('register.open');
+
+    // Optional: normal open/close pages
+    Route::get('/register/open-form', [RegisterController::class,'openForm'])->name('register.open.form');
+    Route::get('/register/close-form', [RegisterController::class,'closeForm'])->name('register.close.form');
+    Route::post('/register/close', [RegisterController::class,'close'])->name('register.close');
 });
 
 /*
@@ -40,7 +52,10 @@ Route::middleware('guest')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->group(function () {
-
+    /* 
+    --------------------------------------------------------------------------
+    | STAFF MANAGEMENT (SUPER ADMIN ONLY)
+    */
     Route::get('/staff', [StaffController::class, 'index'])->name('staff.index');
     Route::get('/staff/create', [StaffController::class, 'create'])->name('staff.create');
     Route::post('/staff', [StaffController::class, 'store'])->name('staff.store');
