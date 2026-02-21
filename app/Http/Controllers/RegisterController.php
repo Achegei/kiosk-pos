@@ -47,30 +47,43 @@ class RegisterController extends Controller
     }
 
     /// Close Register
-    public function close(Request $request)
-{
-    $user = auth()->user();
+   public function close(Request $request)
+    {
+        $request->validate([
+            'closing_cash' => 'required|numeric|min:0',
+        ]);
 
-    $openRegister = $user->openRegister; // your relation: hasOne/openRegister
+        $openRegister = RegisterSession::where('user_id', auth()->id())
+            ->where('status','open')
+            ->latest()
+            ->first();
 
-    if (!$openRegister) {
-        return redirect()->back()->with('error', 'No open register found.');
+        if(!$openRegister){
+            return response()->json([
+                'success'=>false,
+                'message'=>'No open register found'
+            ]);
+        }
+
+        // ✅ Calculate totals properly
+        $cashSales = $openRegister->transactions()
+            ->whereIn('payment_method',['Cash','Mpesa'])   // MPESA treated as received money
+            ->sum('total_amount');
+
+        $expectedCash = $openRegister->opening_cash + $cashSales;
+
+        $openRegister->update([
+            'closing_cash'=>$request->closing_cash,
+            'closed_at'=>now(),
+            'status'=>'closed',
+        ]);
+
+        return response()->json([
+            'success'=>true,
+            'expected'=>$expectedCash,
+            'message'=>'Register closed successfully',
+            'redirect'=>route('dashboard')
+        ]);
     }
-
-    $request->validate([
-        'closing_cash' => 'required|numeric|min:0',
-    ]);
-
-    $expectedCash = $openRegister->opening_cash 
-        + ($openRegister->transactions()->where('payment_method','Cash')->sum('total_amount') ?? 0);
-
-    $openRegister->update([
-        'closing_cash' => $request->closing_cash,
-        'closed_at' => now(),
-        'status' => 'closed',
-    ]);
-
-    return redirect()->back()->with('success', 'Register closed successfully. Expected Cash: KES '.$expectedCash);
-}
 
 }

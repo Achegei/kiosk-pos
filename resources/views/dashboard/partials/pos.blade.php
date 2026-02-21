@@ -202,8 +202,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
             });
             const data = await res.json();
             if(res.ok && data.success){
-                document.getElementById('openRegisterModal').classList.add('hidden');
-                location.reload();
+            window.location.href = data.redirect;
             } else alert(data.message || "Failed to open register");
         }catch(err){
             console.error(err);
