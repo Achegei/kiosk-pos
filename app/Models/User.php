@@ -86,8 +86,10 @@ class User extends Authenticatable
 
     public function openRegister()
     {
-        return $this->hasOne(RegisterSession::class)->where('status','open');
+        return $this->hasOne(RegisterSession::class,'user_id')
+                    ->where('status','open');
     }
+
 
 
     /**

@@ -12,7 +12,7 @@ $store = config('store');
 
 {{-- OPEN REGISTER MODAL --}}
 <div id="openRegisterModal" class="fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 {{ $openRegister ? 'hidden' : '' }}">
-    <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl">
+    <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl transition-all duration-300">
         <h2 class="text-xl font-bold mb-4">🧾 Open Register</h2>
         <form id="openRegisterForm">
             @csrf
@@ -20,8 +20,13 @@ $store = config('store');
                 <label class="block font-semibold mb-1">Opening Cash</label>
                 <input type="number" name="opening_cash" id="openingCashInput" required class="w-full rounded-lg border p-2">
             </div>
-            <button type="submit" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700">
+            <button type="submit" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 mb-2">
                 Open Register
+            </button>
+
+            <!-- Cancel / Go to Dashboard -->
+            <button type="button" class="w-full py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-100" id="cancelOpenRegister">
+                Cancel / Dashboard
             </button>
         </form>
     </div>
@@ -152,7 +157,7 @@ $store = config('store');
 
 {{-- CLOSE REGISTER MODAL --}}
 @if($openRegister && $openRegister->status === 'open')
-<div id="closeRegisterModal" class="hidden fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50">
+<div id="closeRegisterModal" class="hidden fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300">
     <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl">
         <h2 class="text-xl font-bold mb-4">🧾 Close Register</h2>
         <form id="closeRegisterForm" method="POST" action="{{ route('register.close') }}">
@@ -162,21 +167,29 @@ $store = config('store');
             <div class="mb-2">Cash Sales: KES <span id="cashTotal">0.00</span></div>
             <div class="mb-2">Mpesa Sales: KES <span id="mpesaTotal">0.00</span></div>
             <div class="mb-2">Credit Sales: KES <span id="creditTotal">0.00</span></div>
+            
+            <div class="mb-2 font-bold">Expected Cash: KES <span id="expectedCash">0.00</span></div>
+            <div class="mb-2 font-bold">Expected Mpesa: KES <span id="expectedMpesa">0.00</span></div>
+            <div class="mb-2 font-bold">Total Cash + Mpesa: KES <span id="totalCashMpesa">0.00</span></div>
+            <div class="mb-2 font-bold">Grand Total (Opening Cash + Cash + Mpesa): KES <span id="grandTotalCash">0.00</span></div>
 
             <div id="creditCustomersContainer" class="mb-2 hidden">
                 <div class="font-semibold">Credit Customers:</div>
                 <ul id="creditCustomersList" class="mb-2 list-disc list-inside text-gray-700"></ul>
             </div>
 
-            <div class="mb-2 font-bold">Expected Cash: KES <span id="expectedCash">0.00</span></div>
-
             <div class="mb-4">
                 <label class="block font-semibold mb-1">Closing Cash</label>
                 <input type="number" name="closing_cash" required class="w-full rounded-lg border p-2">
             </div>
 
-            <button type="submit" class="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700">
+            <button type="submit" class="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 mb-2">
                 Close Register
+            </button>
+
+            <!-- Cancel / Go to Dashboard -->
+            <button type="button" class="w-full py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-100" id="cancelCloseRegister">
+                Cancel / Dashboard
             </button>
         </form>
     </div>
@@ -202,7 +215,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
             });
             const data = await res.json();
             if(res.ok && data.success){
-            window.location.href = data.redirect;
+                window.location.href = data.redirect;
             } else alert(data.message || "Failed to open register");
         }catch(err){
             console.error(err);
@@ -211,14 +224,35 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
 
     document.getElementById('checkoutForm')?.addEventListener('submit', function(e){
-        @if(!$openRegister)
+        if(!{{ $openRegister ? 'true' : 'false' }}){
             e.preventDefault();
-            document.getElementById('openRegisterModal').classList.remove('hidden');
+            const openModal = document.getElementById('openRegisterModal');
+            openModal.classList.remove('hidden');
+            openModal.classList.remove('opacity-0');
             document.getElementById('openingCashInput').focus();
-        @endif
+        }
     });
 
     window.currentUserName = @json(auth()->user()->name ?? 'Staff');
+
+    // Cancel Buttons with fade + redirect
+    document.getElementById('cancelOpenRegister')?.addEventListener('click', ()=>{
+        const modal = document.getElementById('openRegisterModal');
+        modal.classList.add('opacity-0');
+        setTimeout(()=>{
+            modal.classList.add('hidden');
+            window.location.href = '{{ route("dashboard") }}';
+        }, 300);
+    });
+
+    document.getElementById('cancelCloseRegister')?.addEventListener('click', ()=>{
+        const modal = document.getElementById('closeRegisterModal');
+        modal.classList.add('opacity-0');
+        setTimeout(()=>{
+            modal.classList.add('hidden');
+            window.location.href = '{{ route("dashboard") }}';
+        }, 300);
+    });
 });
 
 // Close Register Modal Logic
@@ -239,7 +273,17 @@ window.getCurrentRegisterTotals = function(){
             if(sale.customer_id) creditCustomers.push({customerName:sale.customer_name||'Unknown', amount:sale.subtotal});
         }
     });
-    return {cash, mpesa, credit, creditCustomers, openingCash: {{ $openRegister->opening_cash ?? 0 }} };
+    const openingCash = {{ $openRegister->opening_cash ?? 0 }};
+    return {
+        cash,
+        mpesa,
+        credit,
+        creditCustomers,
+        openingCash,
+        expectedCash: openingCash + cash,
+        expectedMpesa: mpesa,
+        totalCashMpesa: cash + mpesa
+    };
 };
 
 function updateRegisterModal(){
@@ -247,7 +291,13 @@ function updateRegisterModal(){
     document.getElementById('cashTotal').textContent = totals.cash.toFixed(2);
     document.getElementById('mpesaTotal').textContent = totals.mpesa.toFixed(2);
     document.getElementById('creditTotal').textContent = totals.credit.toFixed(2);
-    document.getElementById('expectedCash').textContent = (totals.openingCash + totals.cash).toFixed(2);
+    document.getElementById('expectedCash').textContent = totals.expectedCash.toFixed(2);
+    document.getElementById('expectedMpesa').textContent = totals.expectedMpesa.toFixed(2);
+    document.getElementById('totalCashMpesa').textContent = totals.totalCashMpesa.toFixed(2);
+
+    // NEW GRAND TOTAL
+    const grandTotal = totals.openingCash + totals.totalCashMpesa;
+    document.getElementById('grandTotalCash').textContent = grandTotal.toFixed(2);
 
     const container=document.getElementById('creditCustomersContainer');
     const list=document.getElementById('creditCustomersList');
@@ -261,6 +311,7 @@ function updateRegisterModal(){
         });
     }else container.classList.add('hidden');
 }
+
 
 window.addEventListener('transactionCompleted', updateRegisterModal);
 
@@ -279,8 +330,8 @@ document.getElementById('closeRegisterForm')?.addEventListener('submit', async f
         });
         const data=await res.json();
         if(res.ok && data.success){
-        localStorage.removeItem('offline_sales_queue');
-        window.location.href='/login';
+            localStorage.removeItem('offline_sales_queue');
+            window.location.href='/login';
         }
         else alert(data.message || 'Failed to close register');
     }catch(err){
