@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\RegisterSession;
+use Illuminate\Support\Facades\DB;
+use App\Models\Transaction;
+
 
 class RegisterController extends Controller
 {
@@ -48,43 +51,64 @@ class RegisterController extends Controller
     }
 
     /// Close Register
-   public function close(Request $request)
-    {
-        $request->validate([
-            'closing_cash' => 'required|numeric|min:0',
-        ]);
+ public function close(Request $request)
+{
+    $request->validate([
+        'closing_cash' => 'required|numeric|min:0',
+    ]);
 
-        $openRegister = RegisterSession::where('user_id', auth()->id())
-            ->where('status','open')
-            ->latest()
-            ->first();
+    $openRegister = RegisterSession::where('status','open')
+        ->where('user_id',auth()->id())
+        ->first();
 
-        if(!$openRegister){
-            return response()->json([
-                'success'=>false,
-                'message'=>'No open register found'
-            ]);
-        }
-
-        // ✅ Calculate totals properly
-        $cashSales = $openRegister->transactions()
-            ->whereIn('payment_method',['Cash','Mpesa'])   // MPESA treated as received money
-            ->sum('total_amount');
-
-        $expectedCash = $openRegister->opening_cash + $cashSales;
-
-        $openRegister->update([
-            'closing_cash'=>$request->closing_cash,
-            'closed_at'=>now(),
-            'status'=>'closed',
-        ]);
-
+    if(!$openRegister){
         return response()->json([
-            'success'=>true,
-            'expected'=>$expectedCash,
-            'message'=>'Register closed successfully',
-            'redirect'=>route('dashboard')
+            'success'=>false,
+            'message'=>'No open register found'
         ]);
     }
+
+    // ⭐ VERY IMPORTANT → USE register_session_id ONLY
+    $cashSales = Transaction::where('register_session_id',$openRegister->id)
+        ->where('payment_method','Cash')
+        ->sum('total_amount');
+
+    $mpesaSales = Transaction::where('register_session_id',$openRegister->id)
+        ->where('payment_method','Mpesa')
+        ->sum('total_amount');
+
+    $creditSales = Transaction::where('register_session_id',$openRegister->id)
+        ->where('payment_method','Credit')
+        ->sum('total_amount');
+
+    $expectedCash = $openRegister->opening_cash + $cashSales + $mpesaSales;
+    $difference = $request->closing_cash - $expectedCash;
+
+    $openRegister->update([
+        'closing_cash'=>$request->closing_cash,
+        'closed_at'=>now(),
+        'status'=>'closed',
+        'cash_sales'=>$cashSales,
+        'mpesa_sales'=>$mpesaSales,
+        'credit_sales'=>$creditSales,
+        'difference'=>$difference,
+    ]);
+
+    return response()->json([
+        'success'=>true,
+        'report'=>[
+            'cashier'=>auth()->user()->name,
+            'opening_cash'=>$openRegister->opening_cash,
+            'cash_sales'=>$cashSales,
+            'mpesa_sales'=>$mpesaSales,
+            'credit_sales'=>$creditSales,
+            'expected_cash'=>$expectedCash,
+            'counted_cash'=>$request->closing_cash,
+            'difference'=>$difference,
+            'opened_at'=>$openRegister->opened_at,
+            'closed_at'=>$openRegister->closed_at,
+        ]
+    ]);
+}
 
 }

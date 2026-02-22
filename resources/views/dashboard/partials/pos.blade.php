@@ -197,7 +197,7 @@ $store = config('store');
 
             <div class="mb-4">
                 <label class="block font-semibold mb-1">Closing Cash</label>
-                <input type="number" name="closing_cash" required class="w-full rounded-lg border p-2">
+              <input type="number" id="closing_cash" name="closing_cash" required class="w-full rounded-lg border p-2">
             </div>
 
             <div class="mb-2 mt-4">
@@ -355,6 +355,19 @@ document.getElementById('closeRegisterForm')?.addEventListener('submit', async f
         });
         const data=await res.json();
         if(res.ok && data.success){
+           const report = data.report; // <-- access the report key
+
+    window.printRegisterClosing({
+        user: report.cashier || window.currentUserName || "Staff",
+        opened: report.opened_at || new Date().toLocaleString(),
+        closed: report.closed_at || new Date().toLocaleString(),
+        opening: parseFloat(report.opening_cash) || 0,
+        cash: parseFloat(report.cash_sales) || 0,
+        mpesa: parseFloat(report.mpesa_sales) || 0,
+        credit: parseFloat(report.credit_sales) || 0,
+        expected: parseFloat(report.expected_cash) || 0,
+        actual: parseFloat(report.counted_cash) || 0
+    });
             localStorage.removeItem('offline_sales_queue');
             window.location.href='/login';
         }

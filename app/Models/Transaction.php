@@ -14,6 +14,9 @@ class Transaction extends Model
         'total_amount',
         'payment_method',
         'status',
+        'register_session_id',   // ⭐ REQUIRED
+        'user_id',               // ⭐ REQUIRED
+        'mpesa_code'
     ];
 
     public function customer()
@@ -25,8 +28,15 @@ class Transaction extends Model
     {
         return $this->hasMany(TransactionItem::class);
     }
-     public function payments()
+
+    public function payments()
     {
         return $this->hasMany(TransactionPayment::class);
+    }
+
+    // ⭐ VERY IMPORTANT RELATION
+    public function registerSession()
+    {
+        return $this->belongsTo(RegisterSession::class);
     }
 }

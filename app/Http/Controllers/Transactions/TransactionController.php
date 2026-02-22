@@ -139,15 +139,17 @@ class TransactionController extends Controller
             }
 
             // ✅ ATTACH REGISTER SESSION HERE
-            $transaction = Transaction::create([
-                'customer_id'=>$request->customer_id,
-                'total_amount'=>0,
-                'payment_method'=>$request->payment_method,
-                'mpesa_code'=>$request->mpesa_code ?? null,
-                'status'=>$request->payment_method==='Credit' ? 'On Credit':'Paid',
-                'register_session_id'=>$session->id,   // ⭐ NEW LINE
-                'user_id'=>auth()->id()               // ⭐ STRONGLY RECOMMENDED FOR AUDIT
+           $transaction = Transaction::create([
+                'customer_id' => $request->customer_id,
+                'total_amount' => 0,
+                'payment_method' => $request->payment_method,
+                'status' => $request->payment_method === 'Credit' ? 'On Credit' : 'Paid',
+
+                // ✅ YOUR REAL COLUMNS
+                'register_session_id' => $session->id,
+                'staff_id' => auth()->id(),
             ]);
+
 
             foreach($request->products as $row){
 

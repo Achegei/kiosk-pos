@@ -862,3 +862,116 @@ document.querySelectorAll('.calcBtn').forEach(btn=>{
         input.value += val;
     });
 });
+
+//register printing
+window.printRegisterClosing = function(report){
+
+if(!report){
+    alert("NO REPORT DATA PASSED");
+    console.error("printRegisterClosing called with empty report");
+    return;
+}
+
+const STORE = window.STORE_INFO || {
+    name:'',
+    address:'',
+    phone:''
+};
+
+const safe = n => Number(n||0);
+const variance = safe(report.actual) - safe(report.expected);
+
+const html = `
+<html>
+<head>
+<title>Register Closing Report</title>
+<style>
+body{font-family:monospace;width:80mm;margin:auto;padding:10px;}
+.center{text-align:center;}
+.row{display:flex;justify-content:space-between;}
+.big{font-size:18px;font-weight:bold;text-align:center;margin-top:8px;}
+hr{border-top:1px dashed #000;}
+.ok{font-weight:bold;}
+.bad{font-weight:bold;color:red;}
+</style>
+</head>
+
+<body>
+
+<div class="center">
+<div style="font-size:18px;font-weight:bold">${STORE.name}</div>
+${STORE.address}<br>
+Tel: ${STORE.phone}
+</div>
+
+<hr>
+
+<div class="center"><b>REGISTER CLOSING REPORT</b></div>
+
+<hr>
+
+Cashier: ${report.user || ''}<br>
+User ID: ${report.user_id || ''}<br>
+Session #: ${report.session || ''}<br>
+
+Opened: ${report.opened || ''}<br>
+Closed: ${report.closed || ''}<br>
+
+<hr>
+
+Opening Cash:
+<div class="row"><div></div><div>KES ${safe(report.opening).toFixed(2)}</div></div>
+
+Cash Sales:
+<div class="row"><div></div><div>KES ${safe(report.cash).toFixed(2)}</div></div>
+
+Mpesa Sales:
+<div class="row"><div></div><div>KES ${safe(report.mpesa).toFixed(2)}</div></div>
+
+Credit Sales:
+<div class="row"><div></div><div>KES ${safe(report.credit).toFixed(2)}</div></div>
+
+<hr>
+
+EXPECTED CASH:
+<div class="big">KES ${safe(report.expected).toFixed(2)}</div>
+
+COUNTED CASH:
+<div class="big">KES ${safe(report.actual).toFixed(2)}</div>
+
+<hr>
+
+DIFFERENCE:
+<div class="big ${variance===0?'ok':'bad'}">
+KES ${variance.toFixed(2)}
+</div>
+
+<hr>
+
+Cashier Sign:<br><br>________________________
+<br><br>
+Supervisor Sign:<br><br>________________________
+<br><br>
+
+<div class="center">SYSTEM GENERATED REPORT</div>
+
+</body>
+</html>
+`;
+
+const w = window.open('', 'PRINT', 'width=400,height=700');
+
+if(!w){
+    alert("Popup blocked — allow popups for POS");
+    return;
+}
+
+w.document.write(html);
+w.document.close();
+
+setTimeout(()=>{
+    w.focus();
+    w.print();
+},500);
+
+};
