@@ -357,10 +357,25 @@ document.getElementById('closeRegisterForm')?.addEventListener('submit', async f
         if(res.ok && data.success){
            const report = data.report; // <-- access the report key
 
+           // Convert timestamps to human-readable
+        function formatTimestamp(ts){
+            if(!ts) return '';
+            return new Date(ts).toLocaleString('en-KE', {
+                timeZone: 'Africa/Nairobi', 
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            });
+        }
     window.printRegisterClosing({
         user: report.cashier || window.currentUserName || "Staff",
-        opened: report.opened_at || new Date().toLocaleString(),
-        closed: report.closed_at || new Date().toLocaleString(),
+        user_id: report.user_id || window.currentUserId || '',
+        session_id: report.session_id || '',
+        opened: formatTimestamp(report.opened_at),
+        closed: formatTimestamp(report.closed_at),
         opening: parseFloat(report.opening_cash) || 0,
         cash: parseFloat(report.cash_sales) || 0,
         mpesa: parseFloat(report.mpesa_sales) || 0,

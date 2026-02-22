@@ -98,6 +98,8 @@ class RegisterController extends Controller
         'success'=>true,
         'report'=>[
             'cashier'=>auth()->user()->name,
+            'user_id'       => auth()->user()->id,
+            'session_id'    => $openRegister->id,
             'opening_cash'=>$openRegister->opening_cash,
             'cash_sales'=>$cashSales,
             'mpesa_sales'=>$mpesaSales,

@@ -17,5 +17,13 @@
         @yield('content')
     </main>
     @stack('scripts')
+<script>
+window.STORE_INFO = {
+    name: "{{ config('store.name') }}",
+    address: "{{ config('store.address') }}",
+    phone: "{{ config('store.phone') }}"
+};
+</script>
 </body>
 </html>
+

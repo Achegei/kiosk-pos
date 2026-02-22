@@ -872,11 +872,11 @@ if(!report){
     return;
 }
 
-const STORE = window.STORE_INFO || {
-    name:'',
-    address:'',
-    phone:''
-};
+const STORE = window.STORE_INFO || {}; // get global STORE info if available
+
+const storeName    = STORE.name    || "STORE NAME";
+const storeAddress = STORE.address || "STORE ADDRESS";
+const storePhone   = STORE.phone   || "0000000000";
 
 const safe = n => Number(n||0);
 const variance = safe(report.actual) - safe(report.expected);
@@ -899,9 +899,9 @@ hr{border-top:1px dashed #000;}
 <body>
 
 <div class="center">
-<div style="font-size:18px;font-weight:bold">${STORE.name}</div>
-${STORE.address}<br>
-Tel: ${STORE.phone}
+  <div style="font-size:18px;font-weight:bold">${storeName}</div>
+  ${storeAddress}<br>
+  Tel: ${storePhone}
 </div>
 
 <hr>
@@ -912,7 +912,7 @@ Tel: ${STORE.phone}
 
 Cashier: ${report.user || ''}<br>
 User ID: ${report.user_id || ''}<br>
-Session #: ${report.session || ''}<br>
+Session: ${report.session_id || ''}<br>
 
 Opened: ${report.opened || ''}<br>
 Closed: ${report.closed || ''}<br>
