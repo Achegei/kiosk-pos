@@ -57,7 +57,10 @@ $store = config('store');
                 <div class="px-3 py-1 rounded font-bold text-white bg-green-500">
                     Register Open: KES {{ number_format($openRegister->opening_cash,2) }}
                 </div>
-
+                <button id="triggerCashMovementBtn"
+                class="px-4 py-2 bg-yellow-500 text-white rounded-xl font-bold hover:bg-yellow-600">
+                💰 Till Actions
+                </button>
                 <button id="triggerCloseRegisterBtn" class="px-4 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700">
                     Close Register
                 </button>
@@ -171,6 +174,24 @@ $store = config('store');
 
 {{-- CLOSE REGISTER MODAL --}}
 @if($openRegister && $openRegister->status === 'open')
+@php
+    $cashSales = $openRegister->transactions()->where('payment_method','Cash')->sum('total_amount');
+    $mpesaSales = $openRegister->transactions()->where('payment_method','Mpesa')->sum('total_amount');
+    $creditSales = $openRegister->transactions()->where('payment_method','Credit')->sum('total_amount');
+
+    $movements = \App\Models\CashMovement::where('register_session_id',$openRegister->id)
+        ->where('tenant_id', auth()->user()->tenant_id)
+        ->get();
+
+    $drops       = $movements->where('type','drop')->sum('amount');
+    $expenses    = $movements->where('type','expense')->sum('amount');
+    $payouts     = $movements->where('type','payout')->sum('amount');
+    $deposits    = $movements->where('type','deposit')->sum('amount');
+    $adjustments = $movements->where('type','adjustment')->sum('amount');
+
+    $expectedCash = $openRegister->opening_cash + $cashSales - $drops - $expenses - $payouts + $deposits + $adjustments;
+@endphp
+
 <div id="closeRegisterModal" class="hidden fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300">
     <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl overflow-auto" style="max-height: 90vh;">
         <h2 class="text-xl font-bold mb-4 text-center">🧾 Close Register</h2>
@@ -180,44 +201,83 @@ $store = config('store');
         <form id="closeRegisterForm" method="POST" action="{{ route('register.close') }}">
             @csrf
 
-            <div class="mb-2">Opening Cash: KES <span id="openingCash">{{ number_format($openRegister->opening_cash, 2) }}</span></div>
-            <div class="mb-2">Cash Sales: KES <span id="cashTotal">0.00</span></div>
-            <div class="mb-2">Mpesa Sales: KES <span id="mpesaTotal">0.00</span></div>
-            <div class="mb-2 font-bold">Total Cash + Mpesa: KES <span id="totalCashMpesa">0.00</span></div>
-            <div class="mb-2 font-bold">Grand Total (Opening + Cash + Mpesa): KES <span id="grandTotalCash">0.00</span></div>
-            <div class="mb-2">Credit Sales: KES <span id="creditTotal">0.00</span></div>
+            {{-- Opening Cash --}}
+            <div class="mb-2">Opening Cash: KES <span id="openingCash">{{ number_format($openRegister->opening_cash,2) }}</span></div>
 
-            <div id="creditCustomersContainer" class="mb-2 hidden">
-                <div class="font-semibold">Credit Customers:</div>
-                <ul id="creditCustomersList" class="mb-2 list-disc list-inside text-gray-700"></ul>
+            {{-- Sales --}}
+            <div class="mb-2">Cash Sales: KES <span id="cashTotal">{{ number_format($cashSales,2) }}</span></div>
+            <div class="mb-2">Mpesa Sales: KES <span id="mpesaTotal">{{ number_format($mpesaSales,2) }}</span></div>
+            <div class="mb-2 font-bold">Total Cash + Mpesa: KES <span id="totalCashMpesa">{{ number_format($cashSales + $mpesaSales,2) }}</span></div>
+            <div class="mb-2 font-bold">Grand Total (Opening + Cash + Mpesa): KES <span id="grandTotalCash">{{ number_format($openRegister->opening_cash + $cashSales + $mpesaSales,2) }}</span></div>
+            <div class="mb-2">Credit Sales: KES <span id="creditTotal">{{ number_format($creditSales,2) }}</span></div>
+
+            {{-- Expected Cash --}}
+            <div class="mb-2 font-bold">Expected Cash: KES <span id="expectedCash">{{ number_format($expectedCash,2) }}</span></div>
+
+            {{-- Cash Movements --}}
+            <div class="mt-4 border-t pt-3">
+                <div class="font-bold mb-1">Till Movements</div>
+                <div class="text-sm">Cash Drops: KES <span id="dropTotal">{{ number_format($drops,2) }}</span></div>
+                <div class="text-sm">Expenses: KES <span id="expenseTotal">{{ number_format($expenses,2) }}</span></div>
+                <div class="text-sm">Payouts: KES <span id="payoutTotal">{{ number_format($payouts,2) }}</span></div>
+                <div class="text-sm">Deposits: KES <span id="depositTotal">{{ number_format($deposits,2) }}</span></div>
+                <div class="text-sm">Adjustments: KES <span id="adjustTotal">{{ number_format($adjustments,2) }}</span></div>
             </div>
-
-            <div class="mb-2 font-bold">Expected Cash: KES <span id="expectedCash">0.00</span></div>
-            <div class="mb-2 font-bold">Expected Mpesa: KES <span id="expectedMpesa">0.00</span></div>
-
+            <div class="mt-4 flex gap-2">
+                <button type="button" id="refreshRegisterBtn" class="flex-1 py-2 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600">
+                    🔄 Refresh Totals
+                </button>
+            </div>
+            {{-- Closing Cash Input --}}
             <div class="mb-4">
                 <label class="block font-semibold mb-1">Closing Cash</label>
-              <input type="number" id="closing_cash" name="closing_cash" required class="w-full rounded-lg border p-2">
-            </div>
-
-            <div class="mb-2 mt-4">
-                <label class="block font-semibold mb-1">Notes / Supervisor Signature</label>
-                <input type="text" name="notes" placeholder="Supervisor/Remarks" class="w-full rounded-lg border p-2">
+                <input type="number" id="closing_cash" name="closing_cash" required class="w-full rounded-lg border p-2" step="0.01">
             </div>
 
             <button type="submit" class="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 mb-2">
                 Close Register
             </button>
-            <!-- Cancel / Go to Dashboard -->
             <button type="button" class="w-full py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-100" id="cancelCloseRegister">
                 Cancel / Dashboard
             </button>
         </form>
     </div>
 </div>
+
+{{-- CASH MOVEMENT MODAL --}}
+<div id="cashMovementModal" class="hidden fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl">
+        <h2 class="text-xl font-bold mb-4">💰 Add Till Movement</h2>
+
+        <form id="cashMovementForm">
+            @csrf
+            {{-- Attach current open register --}}
+            <input type="hidden" name="register_session_id" value="{{ $openRegister->id ?? '' }}">
+
+            <div class="mb-4">
+                <label class="block font-semibold mb-1">Type</label>
+                <select name="type" required class="w-full rounded-lg border p-2">
+                    <option value="">Select Movement Type</option>
+                    <option value="drop">Cash Drop</option>
+                    <option value="expense">Expense</option>
+                    <option value="payout">Payout</option>
+                    <option value="deposit">Deposit</option>
+                    <option value="adjustment">Adjustment</option>
+                </select>
+            </div>
+            <div class="mb-4">
+                <label class="block font-semibold mb-1">Amount</label>
+                <input type="number" name="amount" step="0.01" required class="w-full rounded-lg border p-2">
+            </div>
+            <div class="flex gap-2">
+                <button type="submit" class="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700">Save</button>
+                <button type="button" id="cancelCashMovement" class="flex-1 py-3 border border-gray-300 rounded-xl hover:bg-gray-100">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 @endif
-
-
 {{-- JS --}}
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -278,120 +338,254 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
 });
 
-// Close Register Modal Logic
-document.getElementById('triggerCloseRegisterBtn')?.addEventListener('click', ()=>{
-    document.getElementById('closeRegisterModal').classList.remove('hidden');
-    updateRegisterModal();
-});
-
-window.getCurrentRegisterTotals = function(){
-    let cash=0, mpesa=0, credit=0;
-    let creditCustomers=[];
-    const offline = JSON.parse(localStorage.getItem('offline_sales_queue') || '[]');
-    offline.forEach(sale=>{
-        if(sale.payment_method==='Cash') cash+=parseFloat(sale.subtotal||0);
-        if(sale.payment_method==='Mpesa') mpesa+=parseFloat(sale.subtotal||0);
-        if(sale.payment_method==='Credit'){
-            credit+=parseFloat(sale.subtotal||0);
-            if(sale.customer_id) creditCustomers.push({customerName:sale.customer_name||'Unknown', amount:sale.subtotal});
-        }
+  // ---------------- CANCEL CASH MOVEMENT ----------------
+    document.getElementById('cancelCashMovement')?.addEventListener('click', () => {
+        document.getElementById('cashMovementModal').classList.add('hidden');
     });
-    const openingCash = {{ $openRegister->opening_cash ?? 0 }};
-    return {
-        cash,
-        mpesa,
-        credit,
-        creditCustomers,
-        openingCash,
-        expectedCash: openingCash + cash,
-        expectedMpesa: mpesa,
-        totalCashMpesa: cash + mpesa
+
+    // ---------------- OPEN CASH MOVEMENT MODAL ----------------
+    document.getElementById('triggerCashMovementBtn')?.addEventListener('click', () => {
+        document.getElementById('cashMovementModal').classList.remove('hidden');
+    });
+
+    // ---------------- REFRESH REGISTER TOTALS ----------------
+    const refreshBtn = document.getElementById('refreshRegisterBtn');
+    if(refreshBtn){
+        refreshBtn.addEventListener('click', async () => {
+            console.log('Refresh clicked');
+            await refreshRegisterTotals();
+        });
+    } else {
+        console.warn('Refresh button NOT FOUND');
+    }
+
+    // ---------------- CLOSE REGISTER MODAL ----------------
+    document.getElementById('triggerCloseRegisterBtn')?.addEventListener('click', async () => {
+
+        const modal = document.getElementById('closeRegisterModal');
+        modal.classList.remove('hidden');
+
+        const registerId = "{{ $openRegister->id ?? '' }}";
+        if (!registerId) return;
+
+        const res = await fetch(`/register/${registerId}/totals`);
+        const totals = await res.json();
+
+        updateRegisterModalFromServer(totals);
+    });
+
+
+    // ---------------- REGISTER TOTALS ----------------
+    window.getCurrentRegisterTotals = function() {
+        let cash = 0, mpesa = 0, credit = 0;
+        let creditCustomers = [];
+
+        // Offline sales queue
+        const offline = JSON.parse(localStorage.getItem('offline_sales_queue') || '[]');
+        offline.forEach(sale => {
+            if (sale.payment_method === 'Cash') cash += parseFloat(sale.subtotal || 0);
+            if (sale.payment_method === 'Mpesa') mpesa += parseFloat(sale.subtotal || 0);
+            if (sale.payment_method === 'Credit') {
+                credit += parseFloat(sale.subtotal || 0);
+                if (sale.customer_id) creditCustomers.push({
+                    customerName: sale.customer_name || 'Unknown',
+                    amount: sale.subtotal
+                });
+            }
+        });
+
+        // DB totals from Blade
+        const dbTotals = {
+            openingCash: parseFloat("{{ $openRegister->opening_cash ?? 0 }}"),
+            cash: cash + parseFloat("{{ $cashSales ?? 0 }}"),
+            mpesa: mpesa + parseFloat("{{ $mpesaSales ?? 0 }}"),
+            credit: credit + parseFloat("{{ $creditSales ?? 0 }}"),
+            drops: parseFloat("{{ $drops ?? 0 }}"),
+            expenses: parseFloat("{{ $expenses ?? 0 }}"),
+            payouts: parseFloat("{{ $payouts ?? 0 }}"),
+            deposits: parseFloat("{{ $deposits ?? 0 }}"),
+            adjustments: parseFloat("{{ $adjustments ?? 0 }}")
+        };
+
+        return {
+            ...dbTotals,
+            creditCustomers,
+            expectedCash: dbTotals.openingCash + dbTotals.cash - dbTotals.drops - dbTotals.expenses - dbTotals.payouts + dbTotals.deposits + dbTotals.adjustments,
+            expectedMpesa: dbTotals.mpesa,
+            totalCashMpesa: dbTotals.cash + dbTotals.mpesa
+        };
     };
-};
 
-function updateRegisterModal(){
-    const totals = window.getCurrentRegisterTotals();
+    // ---------------- UPDATE REGISTER MODAL ----------------
+    function updateRegisterModalFromServer(totals) {
+    // Offline cash movements
+    let offlineMovements = JSON.parse(localStorage.getItem('offline_cash_movements') || '[]');
+    let drops = 0, expenses = 0, payouts = 0, deposits = 0, adjustments = 0;
 
-    // existing totals
-    document.getElementById('cashTotal').textContent = totals.cash.toFixed(2);
-    document.getElementById('mpesaTotal').textContent = totals.mpesa.toFixed(2);
-    document.getElementById('creditTotal').textContent = totals.credit.toFixed(2);
-    document.getElementById('expectedCash').textContent = (totals.openingCash + totals.cash).toFixed(2);
-    document.getElementById('expectedMpesa').textContent = totals.mpesa.toFixed(2);
-    
-    const totalCashMpesa = totals.cash + totals.mpesa;
-    document.getElementById('totalCashMpesa').textContent = totalCashMpesa.toFixed(2);
+    offlineMovements.forEach(m => {
+        const amt = parseFloat(m.amount || 0);
+        if (m.type === 'drop') drops += amt;
+        if (m.type === 'expense') expenses += amt;
+        if (m.type === 'payout') payouts += amt;
+        if (m.type === 'deposit') deposits += amt;
+        if (m.type === 'adjustment') adjustments += amt;
+    });
 
-    const grandTotal = totals.openingCash + totalCashMpesa;
-    document.getElementById('grandTotalCash').textContent = grandTotal.toFixed(2);
+    // Combine DB totals + offline movements
+    const combined = {
+        openingCash: parseFloat(totals.openingCash),
+        cash: parseFloat(totals.cash),
+        mpesa: parseFloat(totals.mpesa),
+        credit: parseFloat(totals.credit),
+        drops: parseFloat(totals.drops) + drops,
+        expenses: parseFloat(totals.expenses) + expenses,
+        payouts: parseFloat(totals.payouts) + payouts,
+        deposits: parseFloat(totals.deposits) + deposits,
+        adjustments: parseFloat(totals.adjustments) + adjustments,
+        creditCustomers: totals.creditCustomers || [],
+    };
 
-    const container=document.getElementById('creditCustomersContainer');
-    const list=document.getElementById('creditCustomersList');
-    list.innerHTML='';
-    if(totals.creditCustomers.length){
+    combined.expectedCash = combined.openingCash + combined.cash - combined.drops - combined.expenses - combined.payouts + combined.deposits + combined.adjustments;
+    combined.expectedMpesa = combined.mpesa;
+    combined.totalCashMpesa = combined.cash + combined.mpesa;
+
+    // Update modal DOM
+    document.getElementById('cashTotal').textContent = combined.cash.toFixed(2);
+    document.getElementById('mpesaTotal').textContent = combined.mpesa.toFixed(2);
+    document.getElementById('creditTotal').textContent = combined.credit.toFixed(2);
+    document.getElementById('dropTotal').textContent = combined.drops.toFixed(2);
+    document.getElementById('expenseTotal').textContent = combined.expenses.toFixed(2);
+    document.getElementById('payoutTotal').textContent = combined.payouts.toFixed(2);
+    document.getElementById('depositTotal').textContent = combined.deposits.toFixed(2);
+    document.getElementById('adjustTotal').textContent = combined.adjustments.toFixed(2);
+    document.getElementById('expectedCash').textContent = combined.expectedCash.toFixed(2);
+    document.getElementById('totalCashMpesa').textContent = combined.totalCashMpesa.toFixed(2);
+    document.getElementById('grandTotalCash').textContent = (combined.openingCash + combined.totalCashMpesa).toFixed(2);
+
+    // Update credit customer list if exists
+    const container = document.getElementById('creditCustomersContainer');
+    const list = document.getElementById('creditCustomersList');
+    if (list) list.innerHTML = '';
+    if (combined.creditCustomers.length && container) {
         container.classList.remove('hidden');
-        totals.creditCustomers.forEach(tx=>{
-            const li=document.createElement('li');
-            li.textContent=`${tx.customerName}: KES ${parseFloat(tx.amount).toFixed(2)}`;
+        combined.creditCustomers.forEach(tx => {
+            const li = document.createElement('li');
+            li.textContent = `${tx.customerName}: KES ${parseFloat(tx.amount).toFixed(2)}`;
             list.appendChild(li);
         });
-    } else container.classList.add('hidden');
+    } else if (container) container.classList.add('hidden');
 }
 
-window.addEventListener('transactionCompleted', updateRegisterModal);
+    // ---------------- CLOSE REGISTER FORM ----------------
+    document.getElementById('closeRegisterForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const form = this;
+        const formData = new FormData(form);
+        try {
+            const res = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json'
+                },
+                body: formData
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const report = data.report;
 
-document.getElementById('closeRegisterForm')?.addEventListener('submit', async function(e){
+                function formatTimestamp(ts) {
+                    if (!ts) return '';
+                    return new Date(ts).toLocaleString('en-KE', {
+                        timeZone: 'Africa/Nairobi',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                    });
+                }
+
+                window.printRegisterClosing({
+                    user: report.cashier || window.currentUserName || "Staff",
+                    user_id: report.user_id || window.currentUserId || '',
+                    session_id: report.session_id || '',
+                    opened: formatTimestamp(report.opened_at),
+                    closed: formatTimestamp(report.closed_at),
+                    opening: parseFloat(report.opening_cash) || 0,
+                    cash: parseFloat(report.cash_sales) || 0,
+                    mpesa: parseFloat(report.mpesa_sales) || 0,
+                    credit: parseFloat(report.credit_sales) || 0,
+                    expected: parseFloat(report.expected_cash) || 0,
+                    actual: parseFloat(report.counted_cash) || 0
+                });
+
+                localStorage.removeItem('offline_sales_queue');
+                window.location.href = '/login';
+            } else {
+                alert(data.message || 'Failed to close register');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error closing register, check console');
+        }
+    });
+
+    // ---------------- SAVE CASH MOVEMENT ----------------
+   document.getElementById('cashMovementForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
-    const form=this;
-    const formData=new FormData(form);
-    try{
-        const res=await fetch(form.action,{
-            method:'POST',
-            headers:{
+    const formData = new FormData(this);
+
+    try {
+        // 1️⃣ Save cash movement
+        const res = await fetch("{{ route('cash-movements.store') }}", {
+            method: 'POST',
+            headers: {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                'Accept':'application/json'
+                'Accept': 'application/json'
             },
             body: formData
         });
-        const data=await res.json();
-        if(res.ok && data.success){
-           const report = data.report; // <-- access the report key
+        const data = await res.json();
 
-           // Convert timestamps to human-readable
-        function formatTimestamp(ts){
-            if(!ts) return '';
-            return new Date(ts).toLocaleString('en-KE', {
-                timeZone: 'Africa/Nairobi', 
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-            });
+        if (data.success) {
+            // 2️⃣ Close modal
+            document.getElementById('cashMovementModal').classList.add('hidden');
+
+            // 3️⃣ Fetch updated totals from server
+            await refreshRegisterTotals();
+            // 5️⃣ Optional: show success alert
+            alert("Saved and totals updated!");
+            this.reset();
+        } else {
+            alert(data.message || "Failed to save movement");
         }
-    window.printRegisterClosing({
-        user: report.cashier || window.currentUserName || "Staff",
-        user_id: report.user_id || window.currentUserId || '',
-        session_id: report.session_id || '',
-        opened: formatTimestamp(report.opened_at),
-        closed: formatTimestamp(report.closed_at),
-        opening: parseFloat(report.opening_cash) || 0,
-        cash: parseFloat(report.cash_sales) || 0,
-        mpesa: parseFloat(report.mpesa_sales) || 0,
-        credit: parseFloat(report.credit_sales) || 0,
-        expected: parseFloat(report.expected_cash) || 0,
-        actual: parseFloat(report.counted_cash) || 0
-    });
-            localStorage.removeItem('offline_sales_queue');
-            window.location.href='/login';
-        }
-        else alert(data.message || 'Failed to close register');
-    }catch(err){
+    } catch (err) {
         console.error(err);
-        alert('Error closing register, check console');
+        alert("Error saving movement, check console");
     }
 });
+
+//Refresh totals button function
+    async function refreshRegisterTotals(){
+
+        const registerId = "{{ $openRegister->id ?? '' }}";
+        if(!registerId) return;
+
+        try{
+            const res = await fetch(`/register/${registerId}/totals`);
+            const totals = await res.json();
+
+            updateRegisterModalFromServer(totals);
+
+        }catch(err){
+            console.error('Refresh failed', err);
+        }
+    }
+    
+    
+    
 </script>
 
 @push('scripts')

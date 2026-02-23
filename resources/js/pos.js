@@ -863,14 +863,28 @@ document.querySelectorAll('.calcBtn').forEach(btn=>{
     });
 });
 
-//register printing
-window.printRegisterClosing = function(report){
-
-if(!report){
-    alert("NO REPORT DATA PASSED");
-    console.error("printRegisterClosing called with empty report");
-    return;
+// ---------------- FETCH CASH MOVEMENTS ----------------
+async function fetchCashMovements(sessionId){
+    try {
+        const res = await fetch(`/cash-movements/summary/${sessionId}`,{
+            headers:{'Accept':'application/json'}
+        });
+        if(!res.ok) throw new Error('Failed to fetch cash movements');
+        return await res.json(); // {drops, expenses, payouts, deposits, adjustments}
+    } catch(err){
+        console.error('Cash movements fetch error:', err);
+        return {drops:0, expenses:0, payouts:0, deposits:0, adjustments:0};
+    }
 }
+
+// ---------------- PRINT REGISTER ----------------
+// report must include basic totals (cash, mpesa, credit, actual, expected, user)
+window.printRegisterClosing = function(report){
+    if(!report){
+        alert("NO REPORT DATA PASSED");
+        console.error("printRegisterClosing called with empty report");
+        return;
+    }
 
 const STORE = window.STORE_INFO || {}; // get global STORE info if available
 
@@ -880,6 +894,9 @@ const storePhone   = STORE.phone   || "0000000000";
 
 const safe = n => Number(n||0);
 const variance = safe(report.actual) - safe(report.expected);
+
+// ✅ Include cash movements safely
+const cashMov = report.cashMovements || {}; // {drops, expenses, payouts, deposits, adjustments}
 
 const html = `
 <html>
@@ -913,7 +930,6 @@ hr{border-top:1px dashed #000;}
 Cashier: ${report.user || ''}<br>
 User ID: ${report.user_id || ''}<br>
 Session: ${report.session_id || ''}<br>
-
 Opened: ${report.opened || ''}<br>
 Closed: ${report.closed || ''}<br>
 
@@ -930,6 +946,15 @@ Mpesa Sales:
 
 Credit Sales:
 <div class="row"><div></div><div>KES ${safe(report.credit).toFixed(2)}</div></div>
+
+<hr>
+
+<h4>Cash Movements</h4>
+<div class="row"><div>Drops:</div><div>KES ${safe(cashMov.drops).toFixed(2)}</div></div>
+<div class="row"><div>Expenses:</div><div>KES ${safe(cashMov.expenses).toFixed(2)}</div></div>
+<div class="row"><div>Payouts:</div><div>KES ${safe(cashMov.payouts).toFixed(2)}</div></div>
+<div class="row"><div>Deposits:</div><div>KES ${safe(cashMov.deposits).toFixed(2)}</div></div>
+<div class="row"><div>Adjustments:</div><div>KES ${safe(cashMov.adjustments).toFixed(2)}</div></div>
 
 <hr>
 
@@ -973,5 +998,4 @@ setTimeout(()=>{
     w.focus();
     w.print();
 },500);
-
 };

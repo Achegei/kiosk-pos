@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\StaffController;
+use App\Http\Controllers\CashMovementController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\Users\UserController;
@@ -33,17 +34,25 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login']);
     Route::get('/admin/login', [AuthController::class, 'showLogin']);
-
 });
-/// Register routes (open/close) - can be accessed by authenticated users, but handled via AJAX
+
+/*
+|--------------------------------------------------------------------------
+| REGISTER ROUTES (OPEN / CLOSE) – AJAX HANDLED
+|--------------------------------------------------------------------------
+*/
 Route::middleware('auth')->group(function () {
     // Open register via AJAX
     Route::post('/register/open', [RegisterController::class,'open'])->name('register.open');
 
-    // Optional: normal open/close pages
+    // Optional normal open/close forms
     Route::get('/register/open-form', [RegisterController::class,'openForm'])->name('register.open.form');
     Route::get('/register/close-form', [RegisterController::class,'closeForm'])->name('register.close.form');
     Route::post('/register/close', [RegisterController::class,'close'])->name('register.close');
+    Route::get('/register/{id}/movements', [RegisterController::class, 'movements'])
+    ->name('register.movements');
+    Route::get('/register/{register}/totals', [RegisterController::class,'totals'])->name('register.totals');
+    Route::get('/register/close/data',[RegisterController::class,'closeData']);
 });
 
 /*
@@ -52,9 +61,11 @@ Route::middleware('auth')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->group(function () {
-    /* 
-    --------------------------------------------------------------------------
+
+    /*
+    |--------------------------------------------------------------------------
     | STAFF MANAGEMENT (SUPER ADMIN ONLY)
+    |--------------------------------------------------------------------------
     */
     Route::get('/staff', [StaffController::class, 'index'])->name('staff.index');
     Route::get('/staff/create', [StaffController::class, 'create'])->name('staff.create');
@@ -62,6 +73,26 @@ Route::middleware('auth')->group(function () {
     Route::get('/staff/{staff}/edit', [StaffController::class, 'edit'])->name('staff.edit');
     Route::put('/staff/{staff}', [StaffController::class, 'update'])->name('staff.update');
     Route::delete('/staff/{staff}', [StaffController::class, 'destroy'])->name('staff.destroy');
+
+    /*
+    |--------------------------------------------------------------------------
+    | CASH MOVEMENTS (TILL ACTIONS)
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/cash-movements/store', [CashMovementController::class, 'store'])
+        ->name('cash-movements.store');
+
+    // 🔹 Summary of cash movements for a register session (used in close register modal)
+    Route::get('/cash-movements/summary/{session}', function($session){
+        return response()->json([
+            'drops'=>CashMovement::where('register_session_id',$session)->where('type','drop')->sum('amount'),
+            'expenses'=>CashMovement::where('register_session_id',$session)->where('type','expense')->sum('amount'),
+            'payouts'=>CashMovement::where('register_session_id',$session)->where('type','payout')->sum('amount'),
+            'deposits'=>CashMovement::where('register_session_id',$session)->where('type','deposit')->sum('amount'),
+            'adjustments'=>CashMovement::where('register_session_id',$session)->where('type','adjustment')->sum('amount'),
+        ]);
+    });
+
     /*
     |--------------------------------------------------------------------------
     | DEVICE ACTIVATION CHECK (FOR TABLET LICENSING)
@@ -83,7 +114,6 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-    
 
     /*
     |--------------------------------------------------------------------------
@@ -98,7 +128,6 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     | POS & DEVICE-LOCKED ROUTES
     |--------------------------------------------------------------------------
-    | Only active devices can access POS pages
     */
     Route::middleware(['role:super_admin,admin,supervisor,staff', 'device'])->group(function () {
         Route::get('/pos', [TransactionController::class, 'pos'])->name('pos');
@@ -124,6 +153,7 @@ Route::middleware('auth')->group(function () {
 
     // Quick add customer from POS
     Route::post('/pos/customer-quick-create', [CustomerController::class, 'quickStore'])->name('customers.quickStore');
+
     /*
     |--------------------------------------------------------------------------
     | CRUD RESOURCES (AUTHENTICATED USERS)
