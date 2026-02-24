@@ -1,6 +1,6 @@
-@extends('layouts.admin')
+@extends('layouts.super_admin')
 
-@section('title', 'Create Tenant')
+@section('title', 'Edit Tenant')
 
 @section('content')
 <div class="min-h-screen bg-gray-100">
@@ -10,10 +10,9 @@
 
         <!-- Header -->
         <div class="bg-gradient-to-r from-indigo-50 to-blue-100 p-6 rounded-lg shadow-md mb-8 border-l-4 border-indigo-600">
-            <h2 class="text-2xl font-bold text-gray-800">Create New Business Tenant</h2>
+            <h2 class="text-2xl font-bold text-gray-800">Edit Business Tenant</h2>
             <p class="text-gray-500 mt-1">
-                Add a new store/business to your SaaS POS platform.  
-                A tenant admin account will also be created automatically.
+                Update tenant information or manage its subscription status.
             </p>
         </div>
 
@@ -30,14 +29,15 @@
                 </div>
             @endif
 
-            <form method="POST" action="/admin/tenants" class="space-y-6">
+            <form method="POST" action="{{ route('admin.tenants.update', $tenant->id) }}" class="space-y-6">
                 @csrf
+                @method('PUT')
 
                 <!-- BUSINESS INFO -->
                 <div>
                     <label class="block text-gray-700 font-semibold mb-2">Business Name</label>
                     <input name="business_name"
-                           value="{{ old('business_name') }}"
+                           value="{{ old('business_name', $tenant->name) }}"
                            required
                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                            placeholder="Example: Smart Shop Supermarket">
@@ -46,66 +46,80 @@
                 <div>
                     <label class="block text-gray-700 font-semibold mb-2">Phone</label>
                     <input name="phone"
-                           value="{{ old('phone') }}"
+                           value="{{ old('phone', $tenant->phone) }}"
                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                            placeholder="07XXXXXXXX">
                 </div>
 
-                <!-- ADMIN ACCOUNT -->
-                <div class="border-t pt-6">
-
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
-                        Tenant Administrator Account
-                    </h3>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                        <div>
-                            <label class="block text-gray-700 font-semibold mb-2">Admin Name</label>
-                            <input name="admin_name"
-                                   value="{{ old('admin_name') }}"
-                                   required
-                                   class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 font-semibold mb-2">Admin Email</label>
-                            <input name="admin_email"
-                                   type="email"
-                                   value="{{ old('admin_email') }}"
-                                   required
-                                   class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                        </div>
-
-                    </div>
-
-                    <div class="mt-6">
-                        <label class="block text-gray-700 font-semibold mb-2">Password</label>
-                        <input name="admin_password"
-                               type="password"
-                               required
-                               class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                    </div>
-
+                <!-- STATUS -->
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-2">Subscription Status</label>
+                    <select name="status"
+                            required
+                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        @php
+                            $statuses = ['trial' => 'Trial', 'active' => 'Active', 'expired' => 'Expired'];
+                        @endphp
+                        @foreach($statuses as $key => $label)
+                            <option value="{{ $key }}" {{ old('status', $tenant->subscription_status) === $key ? 'selected' : '' }}>
+                                {{ $label }}
+                            </option>
+                        @endforeach
+                    </select>
                 </div>
 
                 <!-- BUTTONS -->
-                <div class="flex items-center justify-end space-x-4 pt-6">
+                <div class="flex items-center justify-between space-x-4 pt-6">
 
-                    <a href="{{ route('dashboard') }}"
+                    <a href="{{ route('admin.tenants.index') }}"
                        class="px-5 py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition font-semibold">
-                        Cancel
+                        Back
                     </a>
 
-                    <button type="submit"
-                        class="px-7 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition shadow">
-                        Create Tenant
-                    </button>
+                    <div class="flex space-x-2">
+
+                        <button type="submit"
+                            class="px-7 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition shadow">
+                            Update Tenant
+                        </button>
+
+                        <button type="button" onclick="confirmDelete()"
+                            class="px-5 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition shadow">
+                            Delete
+                        </button>
+
+                    </div>
 
                 </div>
 
             </form>
+
+            <!-- DELETE FORM (hidden) -->
+            <form id="deleteTenantForm" method="POST" action="{{ route('admin.tenants.destroy', $tenant->id) }}" class="hidden">
+                @csrf
+                @method('DELETE')
+            </form>
+
         </div>
     </div>
 </div>
+
+<script>
+    function confirmDelete() {
+        Swal.fire({
+            title: 'Are you sure?',
+            text: "This will permanently delete the tenant!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#e3342f',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Yes, delete it!',
+            reverseButtons: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                document.getElementById('deleteTenantForm').submit();
+            }
+        });
+    }
+</script>
 @endsection

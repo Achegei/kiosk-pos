@@ -1,4 +1,4 @@
-@extends('layouts.admin')
+@extends('layouts.super_admin')
 
 @section('title', 'Super Admin Tenants Dashboard')
 

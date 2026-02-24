@@ -32,7 +32,8 @@ class DashboardController extends Controller
         // ===== DEVICE REGISTER (TENANT SAFE)
         $uuid = request()->header('X-DEVICE-ID') ?? request()->input('device_uuid');
 
-        if ($uuid) {
+        // ✅ FIX: do NOT auto-register device for super_admin
+        if ($uuid && $user->role !== 'super_admin') {
             Device::firstOrCreate(
                 [
                     'device_uuid' => $uuid,
@@ -75,6 +76,7 @@ class DashboardController extends Controller
         // ---------------- SALES ----------------
         $baseQuery = Transaction::whereDate('created_at', $today);
 
+        // ✅ super_admin should see ALL tenants
         if ($user->role !== 'super_admin') {
             $baseQuery->where('tenant_id', $tenantId);
         }
@@ -86,7 +88,6 @@ class DashboardController extends Controller
         $data['todaySales'] = (clone $baseQuery)->where('status', 'Paid')->sum('total_amount');
         $data['todayCredit'] = (clone $baseQuery)->where('status', 'On Credit')->sum('total_amount');
 
-        // Blade expects $dailySales
         $data['dailySales'] = $data['todaySales'];
         $data['dailyCreditSales'] = $data['todayCredit'];
         $data['totalTransactions'] = (clone $baseQuery)->count();
@@ -95,6 +96,8 @@ class DashboardController extends Controller
         if (in_array($user->role, ['admin', 'super_admin'])) {
 
             $revQuery = Transaction::query();
+
+            // ✅ allow super_admin to see platform revenue
             if ($user->role !== 'super_admin') {
                 $revQuery->where('tenant_id', $tenantId);
             }
@@ -108,7 +111,11 @@ class DashboardController extends Controller
                         ->take(10)
                 )->get();
 
-            $data['activeDevices'] = $tenantFilter(Device::query())->get();
+            // ✅ FIX: super_admin gets ALL devices platform-wide
+            $data['activeDevices'] =
+                $user->role === 'super_admin'
+                    ? Device::with('tenant')->latest()->get()
+                    : $tenantFilter(Device::query())->get();
 
         } else {
 
@@ -123,34 +130,39 @@ class DashboardController extends Controller
 
         if ($openRegister) {
 
-    $tx = $openRegister->transactions();
-    if ($user->role !== 'super_admin') {
-        $tx->where('tenant_id', $tenantId);
-    }
+            $tx = $openRegister->transactions();
 
-    $data['cashSales'] = $tx->where('payment_method', 'Cash')->sum('total_amount');
-    $data['mpesaSales'] = $tx->where('payment_method', 'Mpesa')->sum('total_amount');
-    $data['creditSales'] = $tx->where('payment_method', 'Credit')->sum('total_amount');
+            // super_admin shouldn't filter register by tenant
+            if ($user->role !== 'super_admin') {
+                $tx->where('tenant_id', $tenantId);
+            }
 
-    $mov = $openRegister->cashMovementsSummary($user->role !== 'super_admin' ? $tenantId : null);
+            $data['cashSales'] = (clone $tx)->where('payment_method', 'Cash')->sum('total_amount');
+            $data['mpesaSales'] = (clone $tx)->where('payment_method', 'Mpesa')->sum('total_amount');
+            $data['creditSales'] = (clone $tx)->where('payment_method', 'Credit')->sum('total_amount');
 
-    $data['drops'] = $mov['drop'] ?? 0;
-    $data['expenses'] = $mov['expense'] ?? 0;
-    $data['payouts'] = $mov['payout'] ?? 0;
-    $data['deposits'] = $mov['deposit'] ?? 0;
-    $data['adjustments'] = $mov['adjustment'] ?? 0;
+            $mov = $openRegister->cashMovementsSummary($user->role !== 'super_admin' ? $tenantId : null);
 
-    // ✅ Define moneyIn and moneyOut for Blade
-    $data['moneyIn'] = $data['drops'] + $data['deposits'] + $data['adjustments'];
-    $data['moneyOut'] = $data['drops'] + $data['expenses'] + $data['payouts'];
+            $data['drops'] = $mov['drop'] ?? 0;
+            $data['expenses'] = $mov['expense'] ?? 0;
+            $data['payouts'] = $mov['payout'] ?? 0;
+            $data['deposits'] = $mov['deposit'] ?? 0;
+            $data['adjustments'] = $mov['adjustment'] ?? 0;
 
-    $data['expectedCash'] = $openRegister->calculateExpectedCash($user->role !== 'super_admin' ? $tenantId : null);
+            $data['moneyIn'] = $data['drops'] + $data['deposits'] + $data['adjustments'];
+            $data['moneyOut'] = $data['drops'] + $data['expenses'] + $data['payouts'];
 
-} else {
+            $data['expectedCash'] = $openRegister->calculateExpectedCash($user->role !== 'super_admin' ? $tenantId : null);
 
-    foreach (['cashSales','mpesaSales','creditSales','drops','expenses','payouts','deposits','adjustments','expectedCash','moneyIn','moneyOut'] as $k)
-        $data[$k] = 0;
-}
+        } else {
+
+            foreach ([
+                'cashSales','mpesaSales','creditSales','drops','expenses',
+                'payouts','deposits','adjustments','expectedCash','moneyIn','moneyOut'
+            ] as $k)
+                $data[$k] = 0;
+        }
+
         // ---------------- RETURN VIEW ----------------
         return match ($user->role) {
             'staff' => view('dashboard.pos', $data),

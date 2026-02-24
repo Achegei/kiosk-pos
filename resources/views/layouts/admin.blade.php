@@ -13,12 +13,11 @@
 
 <div class="flex h-screen">
 <!-- ================= STICKY SIDEBAR ================= -->
-<aside class="w-64 bg-white shadow-xl border-r flex flex-col
-              sticky top-0 max-h-screen">
+<aside class="w-64 bg-white shadow-xl border-r flex flex-col sticky top-0 max-h-screen">
 
     <!-- LOGO -->
     <div class="p-6 text-center border-b flex-shrink-0">
-        <a href="{{ route('dashboard') }}"
+        <a href="{{ auth()->user()->isSuperAdmin() ? route('superadmin.dashboard') : route('dashboard') }}"
            class="text-xl font-extrabold tracking-tight
                   bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600
                   bg-clip-text text-transparent">
@@ -26,61 +25,66 @@
         </a>
     </div>
 
-
-    <!-- NAV (THIS becomes scrollable) -->
+    <!-- NAV -->
     <nav class="flex-1 py-6 space-y-1 text-sm overflow-y-auto">
 
-        @if(auth()->user()->canAccessPos())
-        <a href="{{ route('dashboard') }}"
-           class="flex items-center px-6 py-3 hover:bg-indigo-50 hover:text-indigo-600 transition">
-            🧾 POS Terminal
-        </a>
-        @endif
-
-        <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">
-            Sales
-        </div>
-
-        <a href="{{ route('transactions.index') }}"
-           class="flex px-6 py-3 hover:bg-gray-100">💳 Transactions</a>
-
-        <a href="{{ route('customers.index') }}"
-           class="flex px-6 py-3 hover:bg-gray-100">👥 Customers</a>
-
-        <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">
-            Catalog
-        </div>
-
-        <a href="{{ route('products.index') }}"
-           class="flex px-6 py-3 hover:bg-gray-100">📦 Products</a>
-
-        <a href="{{ route('inventories.index') }}"
-           class="flex px-6 py-3 hover:bg-gray-100">🏬 Inventory</a>
-
-        @if(auth()->user()->isAdmin() || auth()->user()->isSuperAdmin())
-        <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">
-            Administration
-        </div>
-
-        <a href="{{ route('staff.index') }}"
-           class="flex px-6 py-3 hover:bg-gray-100">🛡 Staff</a>
-
+        {{-- ================= SUPER ADMIN ================= --}}
         @if(auth()->user()->isSuperAdmin())
-        <a href="{{ route('admin.tenants.index') }}"
-        class="flex px-6 py-3 hover:bg-gray-100">🏢 Tenants</a>
-        @endif
+
+            <div class="px-6 mt-2 text-xs font-semibold text-gray-400 uppercase">
+                Platform
+            </div>
+
+            <a href="{{ route('superadmin.dashboard') }}"
+               class="flex px-6 py-3 hover:bg-gray-100">📊 Platform Dashboard</a>
+
+            <a href="{{ route('admin.tenants.index') }}"
+               class="flex px-6 py-3 hover:bg-gray-100">🏢 Tenants</a>
+
+            {{-- Optional devices route --}}
+            {{-- <a href="{{ route('admin.devices.index') }}" class="flex px-6 py-3 hover:bg-gray-100">💻 Devices</a> --}}
+
+        @else
+
+            {{-- ================= TENANT USERS ================= --}}
+            @if(auth()->user()->canAccessPos())
+            <a href="{{ route('dashboard') }}"
+               class="flex items-center px-6 py-3 hover:bg-indigo-50 hover:text-indigo-600 transition">
+                🧾 POS Terminal
+            </a>
+            @endif
+
+            {{-- Sales --}}
+            <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">
+                Sales
+            </div>
+            <a href="{{ route('transactions.index') }}" class="flex px-6 py-3 hover:bg-gray-100">💳 Transactions</a>
+            <a href="{{ route('customers.index') }}" class="flex px-6 py-3 hover:bg-gray-100">👥 Customers</a>
+
+            {{-- Catalog --}}
+            <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">
+                Catalog
+            </div>
+            <a href="{{ route('products.index') }}" class="flex px-6 py-3 hover:bg-gray-100">📦 Products</a>
+            <a href="{{ route('inventories.index') }}" class="flex px-6 py-3 hover:bg-gray-100">🏬 Inventory</a>
+
+            {{-- Administration --}}
+            @if(auth()->user()->isAdmin())
+            <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">
+                Administration
+            </div>
+            <a href="{{ route('staff.index') }}" class="flex px-6 py-3 hover:bg-gray-100">🛡 Staff</a>
+            @endif
+
         @endif
 
     </nav>
 
-    <!-- FOOTER (NEVER HIDDEN AGAIN) -->
+    <!-- FOOTER -->
     <div class="p-4 border-t bg-white flex-shrink-0">
-
         <div class="text-xs text-gray-500 mb-2">
             Logged in as<br>
-            <span class="font-semibold text-gray-700">
-                {{ auth()->user()->name }}
-            </span>
+            <span class="font-semibold text-gray-700">{{ auth()->user()->name }}</span>
         </div>
 
         <form method="POST" action="{{ route('logout') }}">
@@ -89,7 +93,6 @@
                 Logout
             </button>
         </form>
-
     </div>
 
 </aside>

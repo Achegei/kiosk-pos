@@ -17,6 +17,10 @@ use App\Http\Controllers\Transactions\TransactionItemController;
 use App\Http\Controllers\Inventories\InventoryController;
 use App\Http\Controllers\Admin\TenantController;
 
+
+use App\Http\Controllers\SuperAdmin\DashboardController as SuperAdminDashboardController;
+use App\Http\Controllers\SuperAdmin\TenantController as SuperTenantController;
+
 /*
 |--------------------------------------------------------------------------
 | ROOT REDIRECT
@@ -80,10 +84,14 @@ Route::middleware('auth')->group(function () {
         ->name('tenants.store');
 
     Route::get('/tenants/{tenant}', [TenantController::class,'show'])
-        ->name('tenants.view');
+        ->name('tenants.show');
 
     Route::get('/tenants/{tenant}/users',[TenantController::class,'users'])
         ->name('tenants.users');
+
+    Route::get('/tenants/{tenant}/edit', [TenantController::class,'edit'])->name('tenants.edit');
+    Route::put('/tenants/{tenant}', [TenantController::class,'update'])->name('tenants.update'); 
+    Route::delete('/tenants/{tenant}', [TenantController::class,'destroy'])->name('tenants.destroy');
 
 });
 
@@ -145,8 +153,12 @@ Route::middleware('auth')->group(function () {
     | DASHBOARD (ALL ROLES)
     |--------------------------------------------------------------------------
     */
+    Route::get('/admin/dashboard', [SuperAdminDashboardController::class, 'index'])
+    ->middleware('role:super_admin')
+    ->name('superadmin.dashboard');
+    
     Route::get('/dashboard', [DashboardController::class, 'dashboard'])
-        ->middleware('role:super_admin,admin,supervisor,staff')
+        ->middleware('role:admin,supervisor,staff')
         ->name('dashboard');
 
     /*

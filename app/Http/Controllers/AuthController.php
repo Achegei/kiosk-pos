@@ -37,9 +37,10 @@ class AuthController extends Controller
         if (Auth::attempt($request->only('email', 'password'))) {
             $request->session()->regenerate();
 
-            // Redirect by role
+            // ✅ Redirect by role
             return match (Auth::user()->role) {
-                'super_admin', 'admin', 'supervisor', 'staff' => redirect()->route('dashboard'),
+                'super_admin' => redirect()->route('superadmin.dashboard'),
+                'admin', 'supervisor', 'staff' => redirect()->route('dashboard'),
                 default => redirect('/'),
             };
         }

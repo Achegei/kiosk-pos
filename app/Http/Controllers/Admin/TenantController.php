@@ -20,6 +20,31 @@ class TenantController extends Controller
         return view('admin.tenants.create');
     }
 
+            public function edit(Tenant $tenant)
+        {
+            return view('admin.tenants.edit', compact('tenant'));
+        }
+
+        public function update(Request $request, Tenant $tenant)
+        {
+            $request->validate([
+                'business_name' => 'required|string|max:255',
+                'phone' => 'nullable|string|max:20',
+                'status' => 'required|string|in:trial,active,inactive',
+            ]);
+
+            // Map form fields to DB columns
+            $tenant->update([
+                'name' => $request->business_name,
+                'phone' => $request->phone,
+                'subscription_status' => $request->status,
+            ]);
+
+            return redirect()->route('admin.tenants.index')
+                            ->with('success','Tenant updated successfully.');
+        }
+
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -44,5 +69,17 @@ class TenantController extends Controller
 
         return redirect()->route('admin.tenants.index')
                ->with('success','Tenant created!');
+    }
+
+    public function show($tenantId)
+    {
+        $tenant = Tenant::findOrFail($tenantId);
+        return view('admin.tenants.show', compact('tenant'));
+    }
+
+    public function destroy(Tenant $tenant)
+    {
+        $tenant->delete();
+        return redirect()->route('admin.tenants.index')->with('success','Tenant deleted.');
     }
 }
