@@ -5,38 +5,68 @@ namespace App\Http\Middleware;
 use Closure;
 use App\Models\Device;
 use Carbon\Carbon;
-use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 
 class CheckDeviceLicense
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     */
     public function handle($request, Closure $next)
-{
-    $uuid = $request->header('X-DEVICE-ID') ?? $request->input('device_uuid');
+    {
+        // ✅ allow login + public routes (PREVENT 419 LOOP)
+        if(!$request->user()){
+            return $next($request);
+        }
 
-    if(!$uuid){
-        return response()->json(['message'=>'Device ID missing'],403);
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+
+        // ✅ device UUID from header OR request OR browser fingerprint fallback
+        $uuid =
+            $request->header('X-DEVICE-ID')
+            ?? $request->input('device_uuid')
+            ?? md5($request->ip().$request->userAgent());
+
+        if(!$uuid){
+            return $this->deny($request,'DEVICE_ID_MISSING');
+        }
+
+        // ✅ TENANT SAFE lookup
+        $device = Device::where('tenant_id',$tenantId)
+            ->where('device_uuid',$uuid)
+            ->first();
+
+        // ✅ OPTIONAL AUTO REGISTER (recommended for POS)
+        if(!$device){
+            $device = Device::create([
+                'tenant_id'=>$tenantId,
+                'device_uuid'=>$uuid,
+                'device_name'=>$request->userAgent(),
+                'is_active'=>true,
+                'license_expires_at'=>Carbon::now()->addDays(7)
+            ]);
+        }
+
+        // disabled
+        if(!$device->is_active){
+            return $this->deny($request,'DEVICE_DISABLED');
+        }
+
+        // expired
+        if($device->license_expires_at &&
+            Carbon::now()->gt($device->license_expires_at)){
+            return $this->deny($request,'LICENSE_EXPIRED',402);
+        }
+
+        return $next($request);
     }
 
-    $device = Device::where('device_uuid',$uuid)->first();
+    private function deny($request,$msg,$code=403)
+    {
+        // API → JSON
+        if($request->expectsJson()){
+            return response()->json(['message'=>$msg],$code);
+        }
 
-    if(!$device){
-        return response()->json(['message'=>'Device not registered'],403);
+        // WEB → redirect
+        return redirect()->route('dashboard')
+            ->with('error',$msg);
     }
-
-    if(!$device->is_active){
-        return response()->json(['message'=>'Device disabled'],403);
-    }
-
-    if($device->license_expires_at && Carbon::now()->gt($device->license_expires_at)){
-        return response()->json(['message'=>'LICENSE_EXPIRED'],402);
-    }
-
-    return $next($request);
 }
-    }

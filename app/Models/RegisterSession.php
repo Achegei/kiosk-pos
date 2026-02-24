@@ -12,7 +12,9 @@ class RegisterSession extends Model
         'closing_cash',
         'opened_at',
         'closed_at',
-        'status'
+        'status',
+        'tenant_id'
+        
     ];
 
     protected $casts = [
@@ -37,30 +39,69 @@ class RegisterSession extends Model
     }
 
     // ---------------- CALCULATIONS ----------------
-    public function calculateExpectedCash()
+    // ---------------- CALCULATIONS ----------------
+public function calculateExpectedCash(?int $tenantId = null)
     {
-        $cashSales = $this->transactions()
-            ->where('payment_method', 'Cash')
-            ->sum('total_amount');
+        // Base transactions query for this register
+        $tx = $this->transactions()
+            ->where('payment_method', 'Cash');
 
-        $drops = $this->cashMovements()->where('type','drop')->sum('amount');
-        $expenses = $this->cashMovements()->where('type','expense')->sum('amount');
-        $payouts = $this->cashMovements()->where('type','payout')->sum('amount');
-        $deposits = $this->cashMovements()->where('type','deposit')->sum('amount');
-        $adjustments = $this->cashMovements()->where('type','adjustment')->sum('amount');
+        // Apply tenant filter for non-super admins
+        if ($tenantId) {
+            $tx->where('tenant_id', $tenantId);
+        }
+
+        $cashSales = $tx->sum('total_amount');
+
+        // Base cash movements query
+        $cmQuery = $this->cashMovements();
+
+        if ($tenantId) {
+            $cmQuery->where('tenant_id', $tenantId);
+        }
+
+        $drops       = $cmQuery->where('type','drop')->sum('amount');
+        $expenses    = $cmQuery->where('type','expense')->sum('amount');
+        $payouts     = $cmQuery->where('type','payout')->sum('amount');
+        $deposits    = $cmQuery->where('type','deposit')->sum('amount');
+        $adjustments = $cmQuery->where('type','adjustment')->sum('amount');
 
         return $this->opening_cash + $cashSales + $deposits + $adjustments - $drops - $expenses - $payouts;
     }
 
-    public function cashMovementsSummary()
+    // ---------------- CASH MOVEMENTS SUMMARY ----------------
+    public function cashMovementsSummary(?int $tenantId = null): array
     {
         $types = ['drop', 'expense', 'payout', 'deposit', 'adjustment'];
         $summary = [];
 
         foreach ($types as $type) {
-            $summary[$type] = $this->cashMovements()->where('type', $type)->sum('amount');
+            $query = $this->cashMovements()->where('type', $type);
+
+            // ✅ Apply tenant filter if provided (for tenant admins)
+            if ($tenantId) {
+                $query->where('tenant_id', $tenantId);
+            }
+
+            $summary[$type] = (float) $query->sum('amount');
         }
 
         return $summary;
     }
+
+    protected static function booted()
+    {
+        static::creating(function ($model) {
+            if(auth()->check() && empty($model->tenant_id)){
+                $model->tenant_id = auth()->user()->tenant_id;
+            }
+        });
+
+        static::addGlobalScope('tenant', function ($query) {
+            if(auth()->check()){
+                $query->where('tenant_id', auth()->user()->tenant_id);
+            }
+        });
+    }
+
 }

@@ -9,21 +9,15 @@ use Illuminate\Http\Request;
 
 class InventoryController extends Controller
 {
-
-    /**
-     * Display inventory list + low stock alerts
-     */
     public function index()
     {
-        // Global threshold (fallback 10)
         $lowStockThreshold = (int) setting('low_stock_threshold', 10);
 
-        // All inventory with product
+        // tenant scope applied automatically
         $inventories = Inventory::with('product')
             ->orderByDesc('updated_at')
             ->paginate(20);
 
-        // Low stock
         $lowStock = Inventory::with('product')
             ->where('quantity', '<=', $lowStockThreshold)
             ->get();
@@ -35,32 +29,24 @@ class InventoryController extends Controller
         ));
     }
 
-
-    /**
-     * Show create inventory form
-     */
     public function create()
     {
-        // Only show products WITHOUT inventory yet
+        // Only show products WITHOUT inventory for this tenant
         $products = Product::whereDoesntHave('inventory')->orderBy('name')->get();
 
         return view('inventories.create', compact('products'));
     }
 
-
-    /**
-     * Store inventory OR update existing safely
-     */
     public function store(Request $request)
     {
         $request->validate([
             'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:0',
+            'quantity'   => 'required|integer|min:0',
         ]);
 
-        // Prevent duplicate inventory rows
         $inventory = Inventory::firstOrNew([
-            'product_id' => $request->product_id
+            'product_id' => $request->product_id,
+            'tenant_id'  => auth()->user()->tenant_id, // tenant safety
         ]);
 
         $inventory->quantity = $request->quantity;
@@ -71,20 +57,16 @@ class InventoryController extends Controller
             ->with('success', 'Inventory saved successfully!');
     }
 
-
-    /**
-     * Edit inventory
-     */
     public function edit(Inventory $inventory)
     {
-        $products = Product::all();
+        // Only show products for this tenant
+        $products = Product::where('tenant_id', auth()->user()->tenant_id)
+            ->orderBy('name')
+            ->get();
+
         return view('inventories.edit', compact('inventory', 'products'));
     }
 
-
-    /**
-     * Update inventory quantity only
-     */
     public function update(Request $request, Inventory $inventory)
     {
         $request->validate([
@@ -100,10 +82,6 @@ class InventoryController extends Controller
             ->with('success', 'Inventory updated successfully!');
     }
 
-
-    /**
-     * Delete inventory
-     */
     public function destroy(Inventory $inventory)
     {
         $inventory->delete();
@@ -113,20 +91,16 @@ class InventoryController extends Controller
             ->with('success', 'Inventory removed successfully!');
     }
 
-
-    /**
-     * Toggle product active/inactive from inventory page
-     */
     public function toggle($id)
     {
         $inventory = Inventory::with('product')->findOrFail($id);
 
-        if ($inventory->product) {
+        // ensure product belongs to tenant
+        if ($inventory->product && $inventory->product->tenant_id == auth()->user()->tenant_id) {
             $inventory->product->is_active = !$inventory->product->is_active;
             $inventory->product->save();
         }
 
         return back()->with('success', 'Product status updated.');
     }
-
 }

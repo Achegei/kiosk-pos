@@ -15,6 +15,7 @@ class Product extends Model
         'price',
         'cost_price',
         'is_active',
+        'tenant_id',
     ];
 
     public function inventory()
@@ -24,12 +25,27 @@ class Product extends Model
 
     protected static function booted()
     {
+        // AUTO-ASSIGN TENANT
+        static::creating(function ($model) {
+            if (auth()->check() && empty($model->tenant_id)) {
+                $model->tenant_id = auth()->user()->tenant_id;
+            }
+        });
+
+        // AUTO-CREATE INVENTORY
         static::created(function ($product) {
             Inventory::create([
                 'product_id' => $product->id,
-                'quantity' => 0, // default stock
+                'quantity' => 0,
             ]);
         });
+
+        static::addGlobalScope('tenant', function ($query) {
+            if(auth()->check()){
+                $query->where('tenant_id', auth()->user()->tenant_id);
+            }
+        });
     }
+
 
 }

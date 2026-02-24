@@ -15,6 +15,7 @@ use App\Http\Controllers\Products\ProductController;
 use App\Http\Controllers\Transactions\TransactionController;
 use App\Http\Controllers\Transactions\TransactionItemController;
 use App\Http\Controllers\Inventories\InventoryController;
+use App\Http\Controllers\Admin\TenantController;
 
 /*
 |--------------------------------------------------------------------------
@@ -61,6 +62,30 @@ Route::middleware('auth')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->group(function () {
+
+    /*
+|--------------------------------------------------------------------------
+| TENANT MANAGEMENT (SUPER ADMIN ONLY)
+|--------------------------------------------------------------------------
+*/
+    Route::middleware('role:super_admin')->prefix('admin')->name('admin.')->group(function () {
+
+    Route::get('/tenants', [TenantController::class,'index'])
+        ->name('tenants.index');
+
+    Route::get('/tenants/create',[TenantController::class,'create'])
+        ->name('tenants.create');
+
+    Route::post('/tenants',[TenantController::class,'store'])
+        ->name('tenants.store');
+
+    Route::get('/tenants/{tenant}', [TenantController::class,'show'])
+        ->name('tenants.view');
+
+    Route::get('/tenants/{tenant}/users',[TenantController::class,'users'])
+        ->name('tenants.users');
+
+});
 
     /*
     |--------------------------------------------------------------------------

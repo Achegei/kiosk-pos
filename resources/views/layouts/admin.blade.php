@@ -64,6 +64,11 @@
 
         <a href="{{ route('staff.index') }}"
            class="flex px-6 py-3 hover:bg-gray-100">🛡 Staff</a>
+
+        @if(auth()->user()->isSuperAdmin())
+        <a href="{{ route('admin.tenants.index') }}"
+        class="flex px-6 py-3 hover:bg-gray-100">🏢 Tenants</a>
+        @endif
         @endif
 
     </nav>

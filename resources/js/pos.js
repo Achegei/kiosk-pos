@@ -878,27 +878,36 @@ async function fetchCashMovements(sessionId){
 }
 
 // ---------------- PRINT REGISTER ----------------
-// report must include basic totals (cash, mpesa, credit, actual, expected, user)
-window.printRegisterClosing = function(report){
-    if(!report){
+window.printRegisterClosing = function(report) {
+    if (!report) {
         alert("NO REPORT DATA PASSED");
         console.error("printRegisterClosing called with empty report");
         return;
     }
 
-const STORE = window.STORE_INFO || {}; // get global STORE info if available
+    // Store globally for debugging
+    window.lastReport = report;
+    console.log("Register Closing Report:", report);
 
-const storeName    = STORE.name    || "STORE NAME";
-const storeAddress = STORE.address || "STORE ADDRESS";
-const storePhone   = STORE.phone   || "0000000000";
+    const STORE = window.STORE_INFO || {}; // get global STORE info if available
 
-const safe = n => Number(n||0);
-const variance = safe(report.actual) - safe(report.expected);
+    const storeName    = STORE.name    || "STORE NAME";
+    const storeAddress = STORE.address || "STORE ADDRESS";
+    const storePhone   = STORE.phone   || "0000000000";
 
-// ✅ Include cash movements safely
-const cashMov = report.cashMovements || {}; // {drops, expenses, payouts, deposits, adjustments}
+    const safe = n => Number(n || 0);
+    const variance = safe(report.counted_cash ?? report.actual) - safe(report.expected_cash ?? report.expected);
 
-const html = `
+    // ✅ Cash movements safely handle snake_case or camelCase
+    const cashMov = {
+        drops: safe(report.cash_drops ?? report.cashDrops),
+        expenses: safe(report.expenses ?? 0),
+        payouts: safe(report.payouts ?? 0),
+        deposits: safe(report.deposits ?? 0),
+        adjustments: safe(report.adjustments ?? 0)
+    };
+
+    const html = `
 <html>
 <head>
 <title>Register Closing Report</title>
@@ -950,19 +959,19 @@ Credit Sales:
 <hr>
 
 <h4>Cash Movements</h4>
-<div class="row"><div>Drops:</div><div>KES ${safe(cashMov.drops).toFixed(2)}</div></div>
-<div class="row"><div>Expenses:</div><div>KES ${safe(cashMov.expenses).toFixed(2)}</div></div>
-<div class="row"><div>Payouts:</div><div>KES ${safe(cashMov.payouts).toFixed(2)}</div></div>
-<div class="row"><div>Deposits:</div><div>KES ${safe(cashMov.deposits).toFixed(2)}</div></div>
-<div class="row"><div>Adjustments:</div><div>KES ${safe(cashMov.adjustments).toFixed(2)}</div></div>
+<div class="row"><div>Drops:</div><div>KES ${cashMov.drops.toFixed(2)}</div></div>
+<div class="row"><div>Expenses:</div><div>KES ${cashMov.expenses.toFixed(2)}</div></div>
+<div class="row"><div>Payouts:</div><div>KES ${cashMov.payouts.toFixed(2)}</div></div>
+<div class="row"><div>Deposits:</div><div>KES ${cashMov.deposits.toFixed(2)}</div></div>
+<div class="row"><div>Adjustments:</div><div>KES ${cashMov.adjustments.toFixed(2)}</div></div>
 
 <hr>
 
 EXPECTED CASH:
-<div class="big">KES ${safe(report.expected).toFixed(2)}</div>
+<div class="big">KES ${safe(report.expected ?? report.expected_cash).toFixed(2)}</div>
 
 COUNTED CASH:
-<div class="big">KES ${safe(report.actual).toFixed(2)}</div>
+<div class="big">KES ${safe(report.actual ?? report.counted_cash).toFixed(2)}</div>
 
 <hr>
 
@@ -984,18 +993,18 @@ Supervisor Sign:<br><br>________________________
 </html>
 `;
 
-const w = window.open('', 'PRINT', 'width=400,height=700');
+    const w = window.open('', 'PRINT', 'width=400,height=700');
 
-if(!w){
-    alert("Popup blocked — allow popups for POS");
-    return;
-}
+    if(!w){
+        alert("Popup blocked — allow popups for POS");
+        return;
+    }
 
-w.document.write(html);
-w.document.close();
+    w.document.write(html);
+    w.document.close();
 
-setTimeout(()=>{
-    w.focus();
-    w.print();
-},500);
+    setTimeout(()=>{
+        w.focus();
+        w.print();
+    }, 500);
 };

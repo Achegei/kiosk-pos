@@ -9,13 +9,13 @@ use App\Models\CashMovement;
 
 class RegisterController extends Controller
 {
-    // Show open register form
-    public function openForm()
+
+    private function tenantId()
     {
-        return view('register.open');
+        return auth()->user()->tenant_id;
     }
 
-    // Open register via AJAX
+    // OPEN REGISTER
     public function open(Request $request)
     {
         $request->validate([
@@ -23,6 +23,7 @@ class RegisterController extends Controller
         ]);
 
         $session = RegisterSession::create([
+            'tenant_id' => $this->tenantId(),
             'user_id' => auth()->id(),
             'opening_cash' => $request->opening_cash,
             'opened_at' => now(),
@@ -30,227 +31,208 @@ class RegisterController extends Controller
         ]);
 
         return response()->json([
-            'success' => true,
-            'message' => 'Register opened successfully',
-            'register_session_id' => $session->id,
-            'redirect' => route('dashboard')
+            'success'=>true,
+            'register_session_id'=>$session->id,
+            'redirect'=>route('dashboard')
         ]);
     }
 
-    // Show Close Register Modal
+    // CLOSE FORM
     public function closeForm()
-{
-    $session = auth()->user()->openRegister;
-
-    if(!$session){
-        abort(404, 'No open register');
-    }
-
-    // Sales totals
-    $cashSales = $session->transactions()
-        ->where('payment_method', 'Cash')
-        ->sum('total_amount');
-
-    // Cash movements sums directly from DB (reliable)
-    $drops       = CashMovement::where('register_session_id', $session->id)
-                    ->where('tenant_id', auth()->user()->tenant_id)
-                    ->where('type', 'drop')
-                    ->sum('amount');
-
-    $expenses    = CashMovement::where('register_session_id', $session->id)
-                    ->where('tenant_id', auth()->user()->tenant_id)
-                    ->where('type', 'expense')
-                    ->sum('amount');
-
-    $payouts     = CashMovement::where('register_session_id', $session->id)
-                    ->where('tenant_id', auth()->user()->tenant_id)
-                    ->where('type', 'payout')
-                    ->sum('amount');
-
-    $deposits    = CashMovement::where('register_session_id', $session->id)
-                    ->where('tenant_id', auth()->user()->tenant_id)
-                    ->where('type', 'deposit')
-                    ->sum('amount');
-
-    $adjustments = CashMovement::where('register_session_id', $session->id)
-                    ->where('tenant_id', auth()->user()->tenant_id)
-                    ->where('type', 'adjustment')
-                    ->sum('amount');
-
-    // Expected cash
-    $expectedCash = $session->calculateExpectedCash();
-
-    return view('register.close', compact(
-        'session',
-        'expectedCash',
-        'cashSales',
-        'drops',
-        'expenses',
-        'payouts',
-        'deposits',
-        'adjustments'
-    ));
-}
-
-    // Close register
-    public function close(Request $request)
     {
-        $request->validate([
-            'closing_cash' => 'required|numeric|min:0',
-        ]);
-
-        $session = RegisterSession::where('status','open')
-            ->where('user_id', auth()->id())
+        $session = RegisterSession::where('tenant_id',$this->tenantId())
+            ->where('user_id',auth()->id())
+            ->where('status','open')
             ->firstOrFail();
 
-        // Sales totals
-        $cashSales   = Transaction::where('register_session_id', $session->id)
+        $cashSales = $session->transactions()
+            ->where('tenant_id',$this->tenantId())
             ->where('payment_method','Cash')
             ->sum('total_amount');
-        $mpesaSales  = Transaction::where('register_session_id', $session->id)
-            ->where('payment_method','Mpesa')
-            ->sum('total_amount');
-        $creditSales = Transaction::where('register_session_id', $session->id)
-            ->where('payment_method','Credit')
-            ->sum('total_amount');
 
-        // Cash movements totals
-        $movements = CashMovement::where('register_session_id', $session->id)
-            ->where('tenant_id', auth()->user()->tenant_id)
-            ->get();
+        $movements = CashMovement::where('tenant_id',$this->tenantId())
+            ->where('register_session_id',$session->id)
+            ->selectRaw("
+                SUM(CASE WHEN type='drop' THEN amount ELSE 0 END) drops,
+                SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) expenses,
+                SUM(CASE WHEN type='payout' THEN amount ELSE 0 END) payouts,
+                SUM(CASE WHEN type='deposit' THEN amount ELSE 0 END) deposits,
+                SUM(CASE WHEN type='adjustment' THEN amount ELSE 0 END) adjustments
+            ")
+            ->first();
 
-        $drops       = $movements->where('type','drop')->sum('amount');
-        $expenses    = $movements->where('type','expense')->sum('amount');
-        $payouts     = $movements->where('type','payout')->sum('amount');
-        $deposits    = $movements->where('type','deposit')->sum('amount');
-        $adjustments = $movements->where('type','adjustment')->sum('amount');
-
-        // Expected cash calculation
         $expectedCash = $session->calculateExpectedCash();
 
-        $difference = $request->closing_cash - $expectedCash;
-
-        // Update register session
-        $session->update([
-            'closing_cash'    => $request->closing_cash,
-            'closed_at'       => now(),
-            'status'          => 'closed',
-            'cash_sales'      => $cashSales,
-            'mpesa_sales'     => $mpesaSales,
-            'credit_sales'    => $creditSales,
-            'difference'      => $difference,
-            'cash_drops'      => $drops,
-            'cash_expenses'   => $expenses,
-            'cash_payouts'    => $payouts,
-            'cash_deposits'   => $deposits,
-        ]);
-
-        // OPTIONAL: Reset all relevant totals for staff after closing
-        if(auth()->user()->role === 'staff') {
-            auth()->user()->update([
-                'open_register_id' => null, // or any field tracking open register
-            ]);
-
-            // Optionally reset movements or cached totals
-            // CashMovement::where('register_session_id', $session->id)->delete(); // If you want to archive separately
-        }
-
-        return response()->json([
-            'success' => true,
-            'report' => [
-                'cashier'       => auth()->user()->name,
-                'user_id'       => auth()->id(),
-                'session_id'    => $session->id,
-                'opening_cash'  => $session->opening_cash,
-                'cash_sales'    => $cashSales,
-                'mpesa_sales'   => $mpesaSales,
-                'credit_sales'  => $creditSales,
-                'cash_drops'    => $drops,
-                'expenses'      => $expenses,
-                'payouts'       => $payouts,
-                'deposits'      => $deposits,
-                'expected_cash' => $expectedCash,
-                'counted_cash'  => $request->closing_cash,
-                'difference'    => $difference,
-                'opened_at'     => $session->opened_at,
-                'closed_at'     => $session->closed_at,
-            ]
+        return view('register.close',[
+            'session'=>$session,
+            'expectedCash'=>$expectedCash,
+            'cashSales'=>$cashSales,
+            'drops'=>$movements->drops ?? 0,
+            'expenses'=>$movements->expenses ?? 0,
+            'payouts'=>$movements->payouts ?? 0,
+            'deposits'=>$movements->deposits ?? 0,
+            'adjustments'=>$movements->adjustments ?? 0,
         ]);
     }
 
-    // Movements summary endpoint
-    public function movements($id)
-    {
-        $register = RegisterSession::findOrFail($id);
-        $summary = $register->cashMovementsSummary();
-        return response()->json($summary);
-    }
 
-    public function totals($id)
+    // CLOSE REGISTER
+public function close(Request $request)
 {
-    $session = RegisterSession::findOrFail($id);
-    $movements = $session->cashMovements()->get();
+    $request->validate([
+        'closing_cash'=>'required|numeric|min:0'
+    ]);
 
-    $cash = $session->transactions()->where('payment_method','Cash')->sum('total_amount');
-    $mpesa = $session->transactions()->where('payment_method','Mpesa')->sum('total_amount');
-    $credit = $session->transactions()->where('payment_method','Credit')->sum('total_amount');
+    $tenant = $this->tenantId();
 
-    $drops       = $movements->where('type','drop')->sum('amount');
-    $expenses    = $movements->where('type','expense')->sum('amount');
-    $payouts     = $movements->where('type','payout')->sum('amount');
-    $deposits    = $movements->where('type','deposit')->sum('amount');
-    $adjustments = $movements->where('type','adjustment')->sum('amount');
+    $session = RegisterSession::where('tenant_id', $tenant)
+        ->where('status', 'open')
+        ->where('user_id', auth()->id())
+        ->firstOrFail();
 
-    $expectedCash = $session->opening_cash + $cash - $drops - $expenses - $payouts + $deposits + $adjustments;
+    // ONE QUERY SALES (FAST)
+    $sales = Transaction::where('tenant_id', $tenant)
+        ->where('register_session_id', $session->id)
+        ->selectRaw("
+            SUM(CASE WHEN payment_method='Cash' THEN total_amount ELSE 0 END) cash,
+            SUM(CASE WHEN payment_method='Mpesa' THEN total_amount ELSE 0 END) mpesa,
+            SUM(CASE WHEN payment_method='Credit' THEN total_amount ELSE 0 END) credit
+        ")->first();
 
+    // ONE QUERY MOVEMENTS (FAST)
+    $movements = CashMovement::where('tenant_id', $tenant)
+        ->where('register_session_id', $session->id)
+        ->selectRaw("
+            SUM(CASE WHEN type='drop' THEN amount ELSE 0 END) drops,
+            SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) expenses,
+            SUM(CASE WHEN type='payout' THEN amount ELSE 0 END) payouts,
+            SUM(CASE WHEN type='deposit' THEN amount ELSE 0 END) deposits,
+            SUM(CASE WHEN type='adjustment' THEN amount ELSE 0 END) adjustments
+        ")->first();
+
+    $expectedCash = $session->calculateExpectedCash($tenant);
+    $difference = $request->closing_cash - $expectedCash;
+
+    $session->update([
+        'closing_cash' => $request->closing_cash,
+        'closed_at' => now(),
+        'status' => 'closed',
+        'cash_sales' => $sales->cash ?? 0,
+        'mpesa_sales' => $sales->mpesa ?? 0,
+        'credit_sales' => $sales->credit ?? 0,
+        'difference' => $difference,
+        'cash_drops' => $movements->drops ?? 0,
+        'cash_expenses' => $movements->expenses ?? 0,
+        'cash_payouts' => $movements->payouts ?? 0,
+        'cash_deposits' => $movements->deposits ?? 0,
+        'cash_adjustments' => $movements->adjustments ?? 0,
+    ]);
+
+    // ✅ Return report for JS
     return response()->json([
-    'openingCash' => $session->opening_cash,
-
-    'cash'   => $session->transactions()->where('payment_method','Cash')->sum('total_amount'),
-    'mpesa'  => $session->transactions()->where('payment_method','Mpesa')->sum('total_amount'),
-    'credit' => $session->transactions()->where('payment_method','Credit')->sum('total_amount'),
-
-    'drops'       => $movements->where('type','drop')->sum('amount'),
-    'expenses'    => $movements->where('type','expense')->sum('amount'),
-    'payouts'     => $movements->where('type','payout')->sum('amount'),
-    'deposits'    => $movements->where('type','deposit')->sum('amount'),
-    'adjustments' => $movements->where('type','adjustment')->sum('amount'),
-]);
-}
-
-public function closeData()
-{
-    $session = auth()->user()->openRegister;
-
-    if(!$session){
-        return response()->json([
-            'cashSales'=>0,
-            'drops'=>0,
-            'payouts'=>0,
-            'expectedCash'=>0
-        ]);
-    }
-
-    $cashSales = Sale::where('register_session_id',$session->id)
-        ->where('payment_method','cash')
-        ->sum('total');
-
-    $drops = CashMovement::where('register_session_id',$session->id)
-        ->where('type','drop')
-        ->sum('amount');
-
-    $payouts = CashMovement::where('register_session_id',$session->id)
-        ->whereIn('type',['expense','payout'])
-        ->sum('amount');
-
-    $expectedCash = $session->opening_cash + $cashSales - $drops - $payouts;
-
-    return response()->json([
-        'cashSales'=>$cashSales,
-        'drops'=>$drops,
-        'payouts'=>$payouts,
-        'expectedCash'=>$expectedCash
+        'success' => true,
+        'report' => [
+            'cashier' => $session->user->name,
+            'user_id' => $session->user_id,
+            'session_id' => $session->id,
+            'opened_at' => $session->opened_at,
+            'closed_at' => $session->closed_at,
+            'opening_cash' => $session->opening_cash,
+            'cash_sales' => $session->cash_sales,
+            'mpesa_sales' => $session->mpesa_sales,
+            'credit_sales' => $session->credit_sales,
+            'expected_cash' => $expectedCash,
+            'counted_cash' => $request->closing_cash,
+            'drops' => $movements->drops ?? 0,
+            'expenses' => $movements->expenses ?? 0,
+            'payouts' => $movements->payouts ?? 0,
+            'deposits' => $movements->deposits ?? 0,
+            'adjustments' => $movements->adjustments ?? 0,
+        ]
     ]);
 }
+
+    // TOTALS ENDPOINT (TENANT SAFE)
+    public function totals($id)
+    {
+        $tenant = $this->tenantId();
+
+        $session = RegisterSession::where('tenant_id',$tenant)->findOrFail($id);
+
+        $sales = Transaction::where('tenant_id',$tenant)
+            ->where('register_session_id',$id)
+            ->selectRaw("
+                SUM(CASE WHEN payment_method='Cash' THEN total_amount ELSE 0 END) cash,
+                SUM(CASE WHEN payment_method='Mpesa' THEN total_amount ELSE 0 END) mpesa,
+                SUM(CASE WHEN payment_method='Credit' THEN total_amount ELSE 0 END) credit
+            ")->first();
+
+        $movements = CashMovement::where('tenant_id',$tenant)
+            ->where('register_session_id',$id)
+            ->selectRaw("
+                SUM(CASE WHEN type='drop' THEN amount ELSE 0 END) drops,
+                SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) expenses,
+                SUM(CASE WHEN type='payout' THEN amount ELSE 0 END) payouts,
+                SUM(CASE WHEN type='deposit' THEN amount ELSE 0 END) deposits,
+                SUM(CASE WHEN type='adjustment' THEN amount ELSE 0 END) adjustments
+            ")->first();
+
+        return response()->json([
+            'openingCash'=>$session->opening_cash,
+            'cash'=>$sales->cash ?? 0,
+            'mpesa'=>$sales->mpesa ?? 0,
+            'credit'=>$sales->credit ?? 0,
+            'drops'=>$movements->drops ?? 0,
+            'expenses'=>$movements->expenses ?? 0,
+            'payouts'=>$movements->payouts ?? 0,
+            'deposits'=>$movements->deposits ?? 0,
+            'adjustments'=>$movements->adjustments ?? 0,
+        ]);
+    }
+
+
+    // CLOSE DATA (FIXED TENANT BUG HERE 🔥)
+    public function closeData()
+    {
+        $tenant = $this->tenantId();
+
+        $session = RegisterSession::where('tenant_id',$tenant)
+            ->where('user_id',auth()->id())
+            ->where('status','open')
+            ->first();
+
+        if(!$session){
+            return response()->json([
+                'cashSales'=>0,
+                'drops'=>0,
+                'payouts'=>0,
+                'expectedCash'=>0
+            ]);
+        }
+
+        $cashSales = Transaction::where('tenant_id',$tenant)
+            ->where('register_session_id',$session->id)
+            ->where('payment_method','Cash')
+            ->sum('total_amount');
+
+        $drops = CashMovement::where('tenant_id',$tenant)
+            ->where('register_session_id',$session->id)
+            ->where('type','drop')
+            ->sum('amount');
+
+        $payouts = CashMovement::where('tenant_id',$tenant)
+            ->where('register_session_id',$session->id)
+            ->whereIn('type',['expense','payout'])
+            ->sum('amount');
+
+        $expectedCash = $session->opening_cash + $cashSales - $drops - $payouts;
+
+        return response()->json([
+            'cashSales'=>$cashSales,
+            'drops'=>$drops,
+            'payouts'=>$payouts,
+            'expectedCash'=>$expectedCash
+        ]);
+    }
 
 }

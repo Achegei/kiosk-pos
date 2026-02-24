@@ -4,7 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 
-// ✅ IMPORT YOUR MODELS
+// ✅ MODELS
 use App\Models\Product;
 use App\Models\Customer;
 use App\Models\Transaction;
@@ -16,11 +16,10 @@ use App\Models\StockMovement;
 use App\Models\Device;
 use App\Models\Setting;
 use App\Models\TransactionPayment;
-use App\Observers\TransactionItemObserver;
 
-
-// ✅ IMPORT OBSERVER
+// ✅ OBSERVERS
 use App\Observers\GlobalAuditObserver;
+use App\Observers\TransactionItemObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,19 +36,58 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // ✅ Attach observer to REAL models (NOT abstract Model)
+        // -----------------------------
+        // GLOBAL AUDIT OBSERVER
+        // -----------------------------
+        $auditModels = [
+            Product::class,
+            Customer::class,
+            Transaction::class,
+            Inventory::class,
+            User::class,
+            OfflineSale::class,
+            StockMovement::class,
+            Device::class,
+            Setting::class,
+            TransactionPayment::class,
+        ];
 
-        Product::observe(GlobalAuditObserver::class);
-        Customer::observe(GlobalAuditObserver::class);
-        Transaction::observe(GlobalAuditObserver::class);
-        TransactionItem::observe(GlobalAuditObserver::class);
-        Inventory::observe(GlobalAuditObserver::class);
-        User::observe(GlobalAuditObserver::class);
-        OfflineSale::observe(GlobalAuditObserver::class);
-        StockMovement::observe(GlobalAuditObserver::class);
-        Device::observe(GlobalAuditObserver::class);
-        Setting::observe(GlobalAuditObserver::class);
-        TransactionPayment::observe(GlobalAuditObserver::class);
-        TransactionItem::observe(TransactionItemObserver::class);
+        foreach ($auditModels as $model) {
+            $model::observe(GlobalAuditObserver::class);
+        }
+
+        // -----------------------------
+        // TRANSACTION ITEM OBSERVER
+        // -----------------------------
+        // Attach both audit + stock observer for TransactionItem
+        TransactionItem::observe([GlobalAuditObserver::class, TransactionItemObserver::class]);
+
+        // -----------------------------
+        // OPTIONAL: GLOBAL TENANT SCOPES (if multi-tenant)
+        // -----------------------------
+        // Example: only load records for current user's tenant automatically
+        if (auth()->check()) {
+            $tenantId = auth()->user()->tenant_id ?? null;
+            if ($tenantId) {
+                Product::addGlobalScope('tenant', function ($builder) use ($tenantId) {
+                    $builder->where('tenant_id', $tenantId);
+                });
+                Customer::addGlobalScope('tenant', function ($builder) use ($tenantId) {
+                    $builder->where('tenant_id', $tenantId);
+                });
+                Inventory::addGlobalScope('tenant', function ($builder) use ($tenantId) {
+                    $builder->where('tenant_id', $tenantId);
+                });
+                Transaction::addGlobalScope('tenant', function ($builder) use ($tenantId) {
+                    $builder->where('tenant_id', $tenantId);
+                });
+                TransactionPayment::addGlobalScope('tenant', function ($builder) use ($tenantId) {
+                    $builder->where('tenant_id', $tenantId);
+                });
+                OfflineSale::addGlobalScope('tenant', function ($builder) use ($tenantId) {
+                    $builder->where('tenant_id', $tenantId);
+                });
+            }
+        }
     }
 }

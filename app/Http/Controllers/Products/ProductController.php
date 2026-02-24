@@ -10,13 +10,12 @@ class ProductController extends Controller
 {
     public function index()
     {
-        // Get products with inventory relation, ordered by newest first
-        $products = Product::with('inventory')->orderBy('created_at', 'desc')->paginate(10);
+        $products = Product::with('inventory')
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
 
-        // Pass to view
         return view('products.index', compact('products'));
     }
-
 
     public function create()
     {
@@ -26,41 +25,53 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
-            'sku' => 'required|string|max:100|unique:products',
+            'name'  => 'required|string|max:255',
+            // unique per tenant
+            'sku'   => 'required|string|max:100|unique:products,sku,NULL,id,tenant_id,' . auth()->user()->tenant_id,
             'price' => 'required|numeric|min:0',
         ]);
 
         $product = Product::create($request->only(['name','sku','price']));
-        return redirect()->route('products.index')->with('success', 'Product created successfully.');
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product created successfully.');
     }
 
     public function edit(Product $product)
     {
+        // ensure tenant owns this product
+        $this->authorizeTenant($product);
+
         return view('products.edit', compact('product'));
     }
 
     public function update(Request $request, Product $product)
     {
+        $this->authorizeTenant($product);
+
         $request->validate([
-            'name' => 'required|string|max:255',
-            'sku' => 'required|string|max:100|unique:products,sku,' . $product->id,
+            'name'  => 'required|string|max:255',
+            // unique per tenant
+            'sku'   => 'required|string|max:100|unique:products,sku,' . $product->id . ',id,tenant_id,' . auth()->user()->tenant_id,
             'price' => 'required|numeric|min:0',
         ]);
 
         $product->update($request->only(['name','sku','price']));
-        return redirect()->route('products.index')->with('success', 'Product updated successfully.');
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product updated successfully.');
     }
 
     public function destroy(Product $product)
     {
+        $this->authorizeTenant($product);
+
         $product->delete();
-        return redirect()->route('products.index')->with('success', 'Product deleted successfully.');
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product deleted successfully.');
     }
 
-    /**
-     * LIVE SEARCH (NAME OR PARTIAL SKU)
-     */
     public function search(Request $request)
     {
         $query = $request->query('query');
@@ -75,8 +86,8 @@ class ProductController extends Controller
             ->take(10)
             ->get()
             ->map(fn($p) => [
-                'id' => $p->id,
-                'name' => $p->name,
+                'id'    => $p->id,
+                'name'  => $p->name,
                 'price' => (float) $p->price,
                 'stock' => optional($p->inventory)->quantity ?? 0,
             ]);
@@ -84,9 +95,6 @@ class ProductController extends Controller
         return response()->json($products);
     }
 
-    /**
-     * SEARCH BY BARCODE
-     */
     public function searchByBarcode($barcode)
     {
         $product = Product::with('inventory')
@@ -97,10 +105,20 @@ class ProductController extends Controller
         if (!$product) return response()->json([]);
 
         return response()->json([
-            'id' => $product->id,
-            'name' => $product->name,
+            'id'    => $product->id,
+            'name'  => $product->name,
             'price' => (float) $product->price,
             'stock' => optional($product->inventory)->quantity ?? 0,
         ]);
+    }
+
+    /**
+     * Ensure product belongs to tenant
+     */
+    protected function authorizeTenant(Product $product)
+    {
+        if ($product->tenant_id !== auth()->user()->tenant_id) {
+            abort(403, 'Unauthorized action for this tenant.');
+        }
     }
 }

@@ -16,7 +16,9 @@ class Transaction extends Model
         'status',
         'register_session_id',   // ⭐ REQUIRED
         'user_id',               // ⭐ REQUIRED
-        'mpesa_code'
+        'mpesa_code',
+        'tenant_id'
+        
     ];
 
     public function customer()
@@ -39,4 +41,20 @@ class Transaction extends Model
     {
         return $this->belongsTo(RegisterSession::class);
     }
+
+    protected static function booted()
+    {
+        static::creating(function ($model) {
+            if(auth()->check() && empty($model->tenant_id)){
+                $model->tenant_id = auth()->user()->tenant_id;
+            }
+        });
+
+        static::addGlobalScope('tenant', function ($query) {
+            if(auth()->check()){
+                    $query->where('tenant_id', auth()->user()->tenant_id);
+                }
+            });
+    }
+
 }

@@ -16,17 +16,27 @@ class CashMovementController extends Controller
             'note' => 'nullable|string|max:255'
         ]);
 
+        // ✅ SAFETY: must be logged in
+        if (!auth()->check()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 401);
+        }
+
+        // ✅ SAFETY: auto attach open register if not provided
+        $sessionId = $request->register_session_id 
+            ?? optional(auth()->user()->openRegister)->id;
+
         CashMovement::create([
-            'tenant_id' => auth()->user()->tenant_id,
-            'register_session_id' => $request->register_session_id,
+            'tenant_id' => auth()->user()->tenant_id ?? null,
+            'register_session_id' => $sessionId,
             'user_id' => auth()->id(),
             'type' => $request->type,
-            'amount' => $request->amount,
+            'amount' => (float) $request->amount,
             'note' => $request->note
         ]);
 
-        return response()->json(['success'=>true]);
+        return response()->json(['success' => true]);
     }
-
-    
 }

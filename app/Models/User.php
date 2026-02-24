@@ -19,6 +19,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'tenant_id',
         'email',
         'password',
         'role',       // role for RBAC
@@ -112,4 +113,20 @@ class User extends Authenticatable
     {
         return $this->can_pos && $this->isStaff();
     }
+    // ================= MULTI-TENANT SETUP =================
+   protected static function booted()
+{
+    static::creating(function ($model) {
+        if (empty($model->tenant_id)) {
+            try {
+                // Assign tenant only if auth user exists
+                if (auth()->check()) {
+                    $model->tenant_id = auth()->user()->tenant_id;
+                }
+            } catch (\Throwable $e) {
+                // Ignore during console, migrations, etc.
+            }
+        }
+    });
+}
 }

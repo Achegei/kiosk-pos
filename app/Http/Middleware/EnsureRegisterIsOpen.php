@@ -4,25 +4,34 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 
 class EnsureRegisterIsOpen
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     */
-    public function handle($request, Closure $next)
+    public function handle(Request $request, Closure $next)
     {
-        if(auth()->check() && auth()->user()->canAccessPos()){
+        $user = $request->user();
 
-            if(!auth()->user()->openRegister()->exists()){
-                return redirect()->route('register.open.form');
+        // Only enforce for POS-enabled staff
+        if ($user && $user->canAccessPos()) {
+
+            // Tenant-safe check
+            $openRegister = $user->openRegister;
+
+            if (!$openRegister || $openRegister->status !== 'open') {
+                // API → JSON
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'message' => 'Register not open',
+                        'action' => 'open_register'
+                    ], 403);
+                }
+
+                // WEB → redirect to open register page
+                return redirect()->route('register.open.form')
+                    ->with('error', 'Please open your register first');
             }
         }
 
         return $next($request);
     }
-
 }

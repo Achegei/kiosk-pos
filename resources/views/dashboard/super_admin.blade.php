@@ -5,7 +5,7 @@
 @section('content')
 <div class="p-6 space-y-6">
     {{-- POS Section --}}
-    <!--@include('dashboard.partials.pos')-->
+    @include('dashboard.partials.devices')
 
     {{-- Stats --}}
     @include('dashboard.partials.stats')

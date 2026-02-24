@@ -14,4 +14,21 @@ class CashMovement extends Model
         'amount',
         'note'
     ];
+
+    protected static function booted()
+    {
+        static::creating(function ($model) {
+            if(auth()->check() && empty($model->tenant_id)){
+                $model->tenant_id = auth()->user()->tenant_id;
+            }
+        });
+
+        static::addGlobalScope('tenant', function ($query) {
+        if(auth()->check()){
+            $query->where('tenant_id', auth()->user()->tenant_id);
+        }
+    });
+    
+    }
+
 }
