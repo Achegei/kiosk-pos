@@ -10,6 +10,8 @@ use App\Models\Customer;
 use App\Models\Device;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Models\RegisterSession;
+use App\Models\CashMovement;
 
 class DashboardController extends Controller
 {
@@ -23,7 +25,7 @@ class DashboardController extends Controller
 
         $tenantId = $user->tenant_id;
 
-        // superadmin bypass
+        // Superadmin bypass
         $tenantFilter = fn($query) =>
             $user->role === 'super_admin'
                 ? $query
@@ -31,8 +33,6 @@ class DashboardController extends Controller
 
         // ===== DEVICE REGISTER (TENANT SAFE)
         $uuid = request()->header('X-DEVICE-ID') ?? request()->input('device_uuid');
-
-        // ✅ FIX: do NOT auto-register device for super_admin
         if ($uuid && $user->role !== 'super_admin') {
             Device::firstOrCreate(
                 [
@@ -53,19 +53,15 @@ class DashboardController extends Controller
 
         // ---------------- PRODUCTS ----------------
         if (in_array($user->role, ['staff', 'supervisor', 'admin', 'super_admin'])) {
-
             $data['products'] = $tenantFilter(Product::orderBy('name'))->get();
             $inventories = $tenantFilter(Inventory::with('product'))->get();
-
             $data['lowStock'] = $inventories->filter(fn($inv) => $inv->quantity <= $lowStockThreshold);
 
             $customers = $tenantFilter(Customer::orderBy('name'))->get();
             $data['customers'] = $customers;
             $data['activeCustomers'] = $customers->count();
             $data['lowStockThreshold'] = $lowStockThreshold;
-
         } else {
-
             $data['products'] = collect();
             $data['customers'] = collect();
             $data['lowStock'] = collect();
@@ -75,92 +71,105 @@ class DashboardController extends Controller
 
         // ---------------- SALES ----------------
         $baseQuery = Transaction::whereDate('created_at', $today);
+        if ($user->role !== 'super_admin') $baseQuery->where('tenant_id', $tenantId);
+        if ($user->role === 'staff') $baseQuery->where('staff_id', $user->id);
 
-        // ✅ super_admin should see ALL tenants
-        if ($user->role !== 'super_admin') {
-            $baseQuery->where('tenant_id', $tenantId);
-        }
-
-        if ($user->role === 'staff') {
-            $baseQuery->where('staff_id', $user->id);
-        }
-
-        $data['todaySales'] = (clone $baseQuery)->where('status', 'Paid')->sum('total_amount');
-        $data['todayCredit'] = (clone $baseQuery)->where('status', 'On Credit')->sum('total_amount');
-
-        $data['dailySales'] = $data['todaySales'];
-        $data['dailyCreditSales'] = $data['todayCredit'];
+        $data['dailySales'] = (clone $baseQuery)->where('status', 'Paid')->sum('total_amount');
+        $data['dailyCreditSales'] = (clone $baseQuery)->where('status', 'On Credit')->sum('total_amount');
         $data['totalTransactions'] = (clone $baseQuery)->count();
 
         // ---------------- ADMIN GLOBAL DATA ----------------
         if (in_array($user->role, ['admin', 'super_admin'])) {
-
             $revQuery = Transaction::query();
-
-            // ✅ allow super_admin to see platform revenue
-            if ($user->role !== 'super_admin') {
-                $revQuery->where('tenant_id', $tenantId);
-            }
-
+            if ($user->role !== 'super_admin') $revQuery->where('tenant_id', $tenantId);
             $data['totalRevenue'] = $revQuery->sum('total_amount');
 
-            $data['recentTransactions'] =
-                $tenantFilter(
-                    Transaction::with(['customer', 'items.product'])
-                        ->latest()
-                        ->take(10)
-                )->get();
+            $data['recentTransactions'] = $tenantFilter(
+                Transaction::with(['customer', 'items.product'])->latest()->take(10)
+            )->get();
 
-            // ✅ FIX: super_admin gets ALL devices platform-wide
             $data['activeDevices'] =
                 $user->role === 'super_admin'
                     ? Device::with('tenant')->latest()->get()
                     : $tenantFilter(Device::query())->get();
-
         } else {
-
             $data['totalRevenue'] = 0;
             $data['recentTransactions'] = collect();
             $data['activeDevices'] = collect();
         }
 
-        // ---------------- REGISTER ----------------
-        $openRegister = $user->openRegister;
-        $data['openRegister'] = $openRegister;
+        // ---------------- REGISTER / CASH MOVEMENTS ----------------
+        if (!in_array($user->role, ['admin', 'super_admin'])) {
+            // Staff & supervisor: only open registers
+            $openRegisters = RegisterSession::when($user->role !== 'super_admin', function ($query) use ($tenantId) {
+                    $query->where('tenant_id', $tenantId);
+                })
+                ->whereNull('closed_at')
+                ->get();
 
-        if ($openRegister) {
+            $data['openRegister'] = $openRegisters->first();
+            $data['openRegisters'] = $openRegisters;
 
-            $tx = $openRegister->transactions();
+            if ($openRegisters->isNotEmpty()) {
+                $registerIds = $openRegisters->pluck('id')->toArray();
 
-            // super_admin shouldn't filter register by tenant
-            if ($user->role !== 'super_admin') {
-                $tx->where('tenant_id', $tenantId);
+                $tx = Transaction::whereIn('register_session_id', $registerIds);
+
+                $data['cashSales']   = (clone $tx)->where('payment_method', 'Cash')->sum('total_amount');
+                $data['mpesaSales']  = (clone $tx)->where('payment_method', 'Mpesa')->sum('total_amount');
+                $data['creditSales'] = (clone $tx)->where('payment_method', 'Credit')->sum('total_amount');
+
+                $mov = CashMovement::whereIn('register_session_id', $registerIds)
+                    ->selectRaw('type, SUM(amount) as total')
+                    ->groupBy('type')
+                    ->pluck('total', 'type')
+                    ->toArray();
+
+                $data['drops']       = $mov['drop'] ?? 0;
+                $data['expenses']    = $mov['expense'] ?? 0;
+                $data['payouts']     = $mov['payout'] ?? 0;
+                $data['deposits']    = $mov['deposit'] ?? 0;
+                $data['adjustments'] = $mov['adjustment'] ?? 0;
+
+                $data['moneyIn']  = $data['deposits'] + $data['adjustments'];
+                $data['moneyOut'] = $data['drops'] + $data['expenses'] + $data['payouts'];
+            } else {
+                foreach ([
+                    'cashSales','mpesaSales','creditSales','drops','expenses',
+                    'payouts','deposits','adjustments','moneyIn','moneyOut'
+                ] as $k) {
+                    $data[$k] = 0;
+                }
             }
+        } else {
+            // Admin / super_admin: all cash movements for today
+            $data['openRegister'] = null;
+            $data['openRegisters'] = collect();
 
-            $data['cashSales'] = (clone $tx)->where('payment_method', 'Cash')->sum('total_amount');
-            $data['mpesaSales'] = (clone $tx)->where('payment_method', 'Mpesa')->sum('total_amount');
-            $data['creditSales'] = (clone $tx)->where('payment_method', 'Credit')->sum('total_amount');
+            $mov = CashMovement::whereDate('created_at', $today)
+                ->selectRaw('type, SUM(amount) as total')
+                ->groupBy('type')
+                ->pluck('total', 'type')
+                ->toArray();
 
-            $mov = $openRegister->cashMovementsSummary($user->role !== 'super_admin' ? $tenantId : null);
-
-            $data['drops'] = $mov['drop'] ?? 0;
-            $data['expenses'] = $mov['expense'] ?? 0;
-            $data['payouts'] = $mov['payout'] ?? 0;
-            $data['deposits'] = $mov['deposit'] ?? 0;
+            $data['drops']       = $mov['drop'] ?? 0;
+            $data['expenses']    = $mov['expense'] ?? 0;
+            $data['payouts']     = $mov['payout'] ?? 0;
+            $data['deposits']    = $mov['deposit'] ?? 0;
             $data['adjustments'] = $mov['adjustment'] ?? 0;
 
-            $data['moneyIn'] = $data['drops'] + $data['deposits'] + $data['adjustments'];
+            $data['moneyIn']  = $data['deposits'] + $data['adjustments'];
             $data['moneyOut'] = $data['drops'] + $data['expenses'] + $data['payouts'];
 
-            $data['expectedCash'] = $openRegister->calculateExpectedCash($user->role !== 'super_admin' ? $tenantId : null);
-
-        } else {
-
-            foreach ([
-                'cashSales','mpesaSales','creditSales','drops','expenses',
-                'payouts','deposits','adjustments','expectedCash','moneyIn','moneyOut'
-            ] as $k)
-                $data[$k] = 0;
+            $data['cashSales']   = Transaction::whereDate('created_at', $today)
+                                    ->where('payment_method', 'Cash')
+                                    ->sum('total_amount');
+            $data['mpesaSales']  = Transaction::whereDate('created_at', $today)
+                                    ->where('payment_method', 'Mpesa')
+                                    ->sum('total_amount');
+            $data['creditSales'] = Transaction::whereDate('created_at', $today)
+                                    ->where('payment_method', 'Credit')
+                                    ->sum('total_amount');
         }
 
         // ---------------- RETURN VIEW ----------------

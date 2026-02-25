@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Tenant;
 use App\Services\TenantInitializer;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Models\Transaction;
 
 class TenantController extends Controller
 {
@@ -82,4 +84,74 @@ class TenantController extends Controller
         $tenant->delete();
         return redirect()->route('admin.tenants.index')->with('success','Tenant deleted.');
     }
+
+    public function export(\App\Models\Tenant $tenant): StreamedResponse
+{
+    $tenantId = auth()->user()->tenant_id;
+
+    $filename = "transactions.csv";
+
+    return response()->streamDownload(function () use ($tenantId, $tenant) {
+
+        $handle = fopen('php://output', 'w');
+
+        // CSV HEADER
+        fputcsv($handle, [
+            'Transaction ID',
+            'Customer',
+            'Items',
+            'Payment Method',
+            'Status',
+            'Total Amount',
+            'Date'
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | IMPORTANT: EXACT DASHBOARD LOGIC
+        |--------------------------------------------------------------------------
+        | We do NOT rely only on $tenant->transactions()
+        | because some legacy rows may miss tenant_id.
+        |
+        | Instead we query transactions table directly.
+        */
+
+        Transaction::with(['customer', 'items.product'])
+            ->where('tenant_id', $tenant->id)   // primary filter
+            ->orderBy('id')
+            ->chunk(500, function ($transactions) use ($handle) {
+
+                foreach ($transactions as $tx) {
+
+                    // build items string
+                    $items = $tx->items
+                        ->map(fn($i) =>
+                            ($i->product->name ?? 'Unknown').' x'.$i->quantity
+                        )->join(' | ');
+
+                    fputcsv($handle, [
+
+                        $tx->id,
+
+                        $tx->customer->name ?? 'Walk-in',
+
+                        $items,
+
+                        $tx->payment_method,
+
+                        $tx->status,
+
+                        $tx->total_amount,
+
+                        $tx->created_at->format('Y-m-d H:i:s'),
+
+                    ]);
+                }
+
+            });
+
+        fclose($handle);
+
+    }, $filename);
+}
 }

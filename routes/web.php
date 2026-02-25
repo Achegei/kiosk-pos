@@ -88,6 +88,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/tenants/{tenant}/users',[TenantController::class,'users'])
         ->name('tenants.users');
+    Route::get('/tenants/export/{tenant}', [SuperAdminDashboardController::class, 'export'])
+    ->name('tenants.export');
 
     Route::get('/tenants/{tenant}/edit', [TenantController::class,'edit'])->name('tenants.edit');
     Route::put('/tenants/{tenant}', [TenantController::class,'update'])->name('tenants.update'); 
@@ -160,6 +162,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'dashboard'])
         ->middleware('role:admin,supervisor,staff')
         ->name('dashboard');
+
+
+    Route::get('/export-transactions', [TransactionController::class, 'export'])->name('transactions.export');
 
     /*
     |--------------------------------------------------------------------------

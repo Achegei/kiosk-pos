@@ -91,6 +91,12 @@ class User extends Authenticatable
                     ->where('status','open');
     }
 
+        public function staff()
+    {
+        return $this->hasMany(User::class, 'tenant_id')
+                    ->whereIn('role', ['staff', 'supervisor', 'admin']); // optional filter
+    }
+
 
 
     /**
