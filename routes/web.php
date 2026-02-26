@@ -212,8 +212,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('admin')->group(function () {
         // Proforma Quotes
         Route::resource('quotes', ProformaQuoteController::class);
-        Route::get('quotes/{quote}/convert', [ProformaQuoteController::class, 'convertToInvoice'])->name('quotes.convert');
-        // Invoices
+        Route::post('admin/quotes/{quote}/convert', [ProformaQuoteController::class, 'convert'])->name('quotes.convert');
         Route::resource('invoices', \App\Http\Controllers\Admin\Invoices\InvoiceController::class);
     });
 

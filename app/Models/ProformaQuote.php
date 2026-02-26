@@ -10,6 +10,7 @@ class ProformaQuote extends Model
         'tenant_id',
         'staff_id',
         'customer_id',
+        'quote_number',
         'total_amount',
         'status',
         'company_name',

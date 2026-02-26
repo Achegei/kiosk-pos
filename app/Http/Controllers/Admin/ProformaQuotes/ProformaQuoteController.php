@@ -341,4 +341,66 @@ class ProformaQuoteController extends Controller
 
         return response()->json($products);
     }
+
+    // ================= API CUSTOMER SEARCH =================
+public function searchCustomers(Request $request)
+{
+    $q = trim($request->query('q',''));
+    if (!$q) return response()->json([]);
+
+    $userTenantId = auth()->user()->tenant_id;
+
+    $customers = Customer::where('tenant_id', $userTenantId)
+        ->where('name', 'LIKE', "%{$q}%")
+        ->select('id','name','email','phone')
+        ->limit(20)
+        ->get();
+
+    return response()->json($customers->map(fn($c) => [
+        'id' => $c->id,
+        'text' => $c->name
+    ]));
+}
+// ================= CONVERT QUOTE TO INVOICE =================
+public function convert(ProformaQuote $quote)
+{
+    // Ensure tenant ownership
+    abort_if($quote->tenant_id !== auth()->user()->tenant_id, 403);
+
+    DB::beginTransaction();
+    try {
+        // Create a new invoice from the quote
+        $invoice = \App\Models\Invoice::create([
+            'tenant_id' => $quote->tenant_id,
+            'staff_id' => auth()->id(),
+            'customer_id' => $quote->customer_id,
+            'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . rand(1000,9999),
+            'total_amount' => $quote->total_amount,
+            'tax_percent' => $quote->tax_percent,
+            'discount' => $quote->discount,
+            'notes' => $quote->notes,
+        ]);
+
+        // Copy items
+        foreach ($quote->items as $item) {
+            $invoice->items()->create([
+                'product_id' => $item->product_id,
+                'quantity' => $item->quantity,
+                'price' => $item->price,
+                'total' => $item->total,
+            ]);
+        }
+
+        // Mark quote as converted
+        $quote->update(['status' => 'converted']);
+
+        DB::commit();
+
+        return redirect()->route('invoices.show', $invoice->id)
+                         ->with('success', 'Quote converted to Invoice successfully!');
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return back()->with('error', $e->getMessage());
+    }
+}
 }
