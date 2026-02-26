@@ -16,10 +16,13 @@ use App\Http\Controllers\Transactions\TransactionController;
 use App\Http\Controllers\Transactions\TransactionItemController;
 use App\Http\Controllers\Inventories\InventoryController;
 use App\Http\Controllers\Admin\TenantController;
+use App\Http\Controllers\Admin\ProformaQuotes\ProformaQuoteController;
+
 
 
 use App\Http\Controllers\SuperAdmin\DashboardController as SuperAdminDashboardController;
 use App\Http\Controllers\SuperAdmin\TenantController as SuperTenantController;
+use App\Http\Controllers\Admin\Tenants\SettingsController as TenantsSettingsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -60,6 +63,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/register/close/data',[RegisterController::class,'closeData']);
 });
 
+Route::prefix('admin/tenants/settings')->middleware(['web', 'auth'])->group(function () {
+    // Show the edit form
+    Route::get('/notes', [TenantsSettingsController::class, 'editDefaultNotes'])
+        ->name('tenants.settings.notes');
+
+    // Handle the form submission (your Blade form posts here)
+    Route::post('/notes', [TenantsSettingsController::class, 'updateDefaultNotes'])
+        ->name('tenant.settings.default_notes.update');
+});
 /*
 |--------------------------------------------------------------------------
 | AUTHENTICATED ROUTES
@@ -180,8 +192,12 @@ Route::middleware('auth')->group(function () {
     | LIVE SEARCH ROUTES (AJAX)
     |--------------------------------------------------------------------------
     */
-    Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
+    Route::middleware(['auth'])->group(function() {
+    Route::get('/products/search', [ProformaQuoteController::class, 'searchProducts']);
     Route::get('/products/barcode/{barcode}', [ProductController::class, 'searchByBarcode'])->name('products.barcode');
+    Route::get('/customers/search', [ProformaQuoteController::class, 'searchCustomers'])
+    ->name('customers.search');
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -191,6 +207,14 @@ Route::middleware('auth')->group(function () {
     Route::middleware('role:admin,superadmin,supervisor')->group(function () {
         Route::get('/settings/low-stock', [SettingsController::class, 'editLowStock'])->name('settings.low_stock');
         Route::post('/settings/low-stock', [SettingsController::class, 'updateLowStock'])->name('settings.low_stock.update');
+    });
+
+    Route::prefix('admin')->group(function () {
+        // Proforma Quotes
+        Route::resource('quotes', ProformaQuoteController::class);
+        Route::get('quotes/{quote}/convert', [ProformaQuoteController::class, 'convertToInvoice'])->name('quotes.convert');
+        // Invoices
+        Route::resource('invoices', \App\Http\Controllers\Admin\Invoices\InvoiceController::class);
     });
 
     // Quick add customer from POS
@@ -206,6 +230,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('transactions', TransactionController::class);
     Route::resource('transaction-items', TransactionItemController::class);
     Route::resource('inventories', InventoryController::class);
+    Route::resource('quotes', ProformaQuoteController::class);
 });
 
 /*

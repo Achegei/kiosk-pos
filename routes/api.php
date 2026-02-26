@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Transactions\TransactionController;
 use App\Http\Controllers\Products\ProductController;
 use App\Http\Controllers\OfflineSaleController;
-
+use App\Http\Controllers\Admin\ProformaQuotes\ProformaQuoteController;
 /*
 |--------------------------------------------------------------------------
 | POS API ROUTES (JSON ONLY)
@@ -15,7 +15,7 @@ use App\Http\Controllers\OfflineSaleController;
 |
 */
 
-Route::prefix('api')->middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function () {
 
     // 🔎 SEARCH PRODUCTS
     Route::get('/products/search', [ProductController::class, 'search']);

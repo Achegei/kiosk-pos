@@ -121,4 +121,5 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action for this tenant.');
         }
     }
+
 }

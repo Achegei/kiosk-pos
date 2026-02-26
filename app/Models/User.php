@@ -97,6 +97,11 @@ class User extends Authenticatable
                     ->whereIn('role', ['staff', 'supervisor', 'admin']); // optional filter
     }
 
+    public function tenant()
+    {
+        return $this->belongsTo(\App\Models\Tenant::class, 'tenant_id');
+    }
+
 
 
     /**

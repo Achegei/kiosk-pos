@@ -1,18 +1,17 @@
-@extends('layouts.super_admin')
+@extends('layouts.admin')
 
-@section('title', 'Edit Tenant')
+@section('title', 'Create Tenant')
 
 @section('content')
 <div class="min-h-screen bg-gray-100">
 
-    <!-- Page Container -->
     <div class="max-w-4xl mx-auto py-10 px-6">
 
         <!-- Header -->
         <div class="bg-gradient-to-r from-indigo-50 to-blue-100 p-6 rounded-lg shadow-md mb-8 border-l-4 border-indigo-600">
-            <h2 class="text-2xl font-bold text-gray-800">Edit Business Tenant</h2>
+            <h2 class="text-2xl font-bold text-gray-800">Create New Business Tenant</h2>
             <p class="text-gray-500 mt-1">
-                Update tenant information or manage its subscription status.
+                Fill in the details to register a new tenant.
             </p>
         </div>
 
@@ -29,15 +28,14 @@
                 </div>
             @endif
 
-            <form method="POST" action="{{ route('admin.tenants.update', $tenant->id) }}" class="space-y-6">
+            <form method="POST" action="{{ route('admin.tenants.store') }}" class="space-y-6" enctype="multipart/form-data">
                 @csrf
-                @method('PUT')
 
                 <!-- BUSINESS INFO -->
                 <div>
                     <label class="block text-gray-700 font-semibold mb-2">Business Name</label>
                     <input name="business_name"
-                           value="{{ old('business_name', $tenant->name) }}"
+                           value="{{ old('business_name') }}"
                            required
                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                            placeholder="Example: Smart Shop Supermarket">
@@ -46,26 +44,68 @@
                 <div>
                     <label class="block text-gray-700 font-semibold mb-2">Phone</label>
                     <input name="phone"
-                           value="{{ old('phone', $tenant->phone) }}"
+                           value="{{ old('phone') }}"
                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                            placeholder="07XXXXXXXX">
                 </div>
 
-                <!-- STATUS -->
+                <!-- ADDRESS -->
                 <div>
-                    <label class="block text-gray-700 font-semibold mb-2">Subscription Status</label>
-                    <select name="status"
-                            required
-                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                        @php
-                            $statuses = ['trial' => 'Trial', 'active' => 'Active', 'expired' => 'Expired'];
-                        @endphp
-                        @foreach($statuses as $key => $label)
-                            <option value="{{ $key }}" {{ old('status', $tenant->subscription_status) === $key ? 'selected' : '' }}>
-                                {{ $label }}
-                            </option>
-                        @endforeach
-                    </select>
+                    <label class="block text-gray-700 font-semibold mb-2">Street</label>
+                    <input name="street"
+                           value="{{ old('street') }}"
+                           class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                           placeholder="Street name or road">
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-2">Building / Suite</label>
+                    <input name="building"
+                           value="{{ old('building') }}"
+                           class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                           placeholder="Building / Suite">
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-2">Shop Number</label>
+                    <input name="shop_number"
+                           value="{{ old('shop_number') }}"
+                           class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                           placeholder="Shop number">
+                </div>
+
+                <!-- LOGO -->
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-2">Business Logo</label>
+                    <input type="file" name="logo" accept="image/*"
+                           class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+
+                <!-- ADMIN INFO -->
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-2">Admin Name</label>
+                    <input name="admin_name"
+                           value="{{ old('admin_name') }}"
+                           required
+                           class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                           placeholder="Full name of the admin">
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-2">Admin Email</label>
+                    <input type="email" name="admin_email"
+                           value="{{ old('admin_email') }}"
+                           required
+                           class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                           placeholder="admin@example.com">
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-2">Admin Password</label>
+                    <input type="password" name="admin_password"
+                           required
+                           class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                           placeholder="Password (min 6 characters)">
                 </div>
 
                 <!-- BUTTONS -->
@@ -76,50 +116,16 @@
                         Back
                     </a>
 
-                    <div class="flex space-x-2">
-
-                        <button type="submit"
-                            class="px-7 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition shadow">
-                            Update Tenant
-                        </button>
-
-                        <button type="button" onclick="confirmDelete()"
-                            class="px-5 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition shadow">
-                            Delete
-                        </button>
-
-                    </div>
+                    <button type="submit"
+                        class="px-7 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition shadow">
+                        Create Tenant
+                    </button>
 
                 </div>
 
             </form>
 
-            <!-- DELETE FORM (hidden) -->
-            <form id="deleteTenantForm" method="POST" action="{{ route('admin.tenants.destroy', $tenant->id) }}" class="hidden">
-                @csrf
-                @method('DELETE')
-            </form>
-
         </div>
     </div>
 </div>
-
-<script>
-    function confirmDelete() {
-        Swal.fire({
-            title: 'Are you sure?',
-            text: "This will permanently delete the tenant!",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#e3342f',
-            cancelButtonColor: '#6b7280',
-            confirmButtonText: 'Yes, delete it!',
-            reverseButtons: true
-        }).then((result) => {
-            if (result.isConfirmed) {
-                document.getElementById('deleteTenantForm').submit();
-            }
-        });
-    }
-</script>
 @endsection

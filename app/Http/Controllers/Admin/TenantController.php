@@ -19,58 +19,89 @@ class TenantController extends Controller
 
     public function create()
     {
-        return view('admin.tenants.create');
+        $tenant = new Tenant();
+        return view('admin.tenants.create', compact('tenant'));
     }
 
-            public function edit(Tenant $tenant)
-        {
-            return view('admin.tenants.edit', compact('tenant'));
-        }
-
-        public function update(Request $request, Tenant $tenant)
-        {
-            $request->validate([
-                'business_name' => 'required|string|max:255',
-                'phone' => 'nullable|string|max:20',
-                'status' => 'required|string|in:trial,active,inactive',
-            ]);
-
-            // Map form fields to DB columns
-            $tenant->update([
-                'name' => $request->business_name,
-                'phone' => $request->phone,
-                'subscription_status' => $request->status,
-            ]);
-
-            return redirect()->route('admin.tenants.index')
-                            ->with('success','Tenant updated successfully.');
-        }
-
+    public function edit(Tenant $tenant)
+    {
+        return view('admin.tenants.edit', compact('tenant'));
+    }
 
     public function store(Request $request)
     {
         $data = $request->validate([
-            'business_name'=>'required',
-            'phone'=>'nullable',
-            'admin_name'=>'required',
-            'admin_email'=>'required|email|unique:users,email',
-            'admin_password'=>'required|min:6'
+            'business_name'      => 'required|string|max:255',
+            'phone'              => 'nullable|string|max:255',
+            'street'             => 'nullable|string|max:255',
+            'building'           => 'nullable|string|max:255',
+            'shop_number'        => 'nullable|string|max:255',
+            'logo'               => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'subscription_status'=> 'nullable|string|in:trial,active,expired',
+            'expiry_date'        => 'nullable|date',
+            'admin_name'         => 'required|string|max:255',
+            'admin_email'        => 'required|email|unique:users,email',
+            'admin_password'     => 'required|string|min:6',
         ]);
 
         $tenant = Tenant::create([
-            'name'=>$data['business_name'],
-            'phone'=>$data['phone'],
-            'subscription_status'=>'trial'
+            'name'                => $data['business_name'],
+            'phone'               => $data['phone'] ?? null,
+            'street_address'      => $data['street'] ?? null,
+            'building_name'       => $data['building'] ?? null,
+            'office_number'       => $data['shop_number'] ?? null,
+            'subscription_status' => $data['subscription_status'] ?? 'trial',
+            'expiry_date'         => $data['expiry_date'] ?? null,
         ]);
 
-        TenantInitializer::setup($tenant,[
-            'name'=>$data['admin_name'],
-            'email'=>$data['admin_email'],
-            'password'=>$data['admin_password']
+        // Handle logo upload
+        if ($request->hasFile('logo')) {
+            $tenant->logo = $request->file('logo')->store('tenants/logos', 'public');
+            $tenant->save();
+        }
+
+        // Initialize tenant admin
+        TenantInitializer::setup($tenant, [
+            'name'     => $data['admin_name'],
+            'email'    => $data['admin_email'],
+            'password' => $data['admin_password'],
         ]);
 
         return redirect()->route('admin.tenants.index')
                ->with('success','Tenant created!');
+    }
+
+    public function update(Request $request, Tenant $tenant)
+    {
+        $data = $request->validate([
+            'business_name'      => 'required|string|max:255',
+            'phone'              => 'nullable|string|max:255',
+            'street'             => 'nullable|string|max:255',
+            'building'           => 'nullable|string|max:255',
+            'shop_number'        => 'nullable|string|max:255',
+            'logo'               => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'subscription_status'=> 'required|string|in:trial,active,expired',
+            'expiry_date'        => 'nullable|date',
+        ]);
+
+        $tenant->update([
+            'name'                => $data['business_name'],
+            'phone'               => $data['phone'] ?? null,
+            'street_address'      => $data['street'] ?? null,
+            'building_name'       => $data['building'] ?? null,
+            'office_number'       => $data['shop_number'] ?? null,
+            'subscription_status' => $data['subscription_status'],
+            'expiry_date'         => $data['expiry_date'] ?? null,
+        ]);
+
+        // Handle logo upload
+        if ($request->hasFile('logo')) {
+            $tenant->logo = $request->file('logo')->store('tenants/logos', 'public');
+            $tenant->save();
+        }
+
+        return redirect()->route('admin.tenants.index')
+                        ->with('success','Tenant updated successfully.');
     }
 
     public function show($tenantId)
@@ -82,76 +113,51 @@ class TenantController extends Controller
     public function destroy(Tenant $tenant)
     {
         $tenant->delete();
-        return redirect()->route('admin.tenants.index')->with('success','Tenant deleted.');
+        return redirect()->route('admin.tenants.index')
+                         ->with('success','Tenant deleted.');
     }
 
-    public function export(\App\Models\Tenant $tenant): StreamedResponse
-{
-    $tenantId = auth()->user()->tenant_id;
+    public function export(Tenant $tenant): StreamedResponse
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $filename = "transactions.csv";
 
-    $filename = "transactions.csv";
+        return response()->streamDownload(function () use ($tenantId, $tenant) {
+            $handle = fopen('php://output', 'w');
 
-    return response()->streamDownload(function () use ($tenantId, $tenant) {
+            fputcsv($handle, [
+                'Transaction ID',
+                'Customer',
+                'Items',
+                'Payment Method',
+                'Status',
+                'Total Amount',
+                'Date'
+            ]);
 
-        $handle = fopen('php://output', 'w');
+            Transaction::with(['customer', 'items.product'])
+                ->where('tenant_id', $tenant->id)
+                ->orderBy('id')
+                ->chunk(500, function ($transactions) use ($handle) {
+                    foreach ($transactions as $tx) {
+                        $items = $tx->items
+                            ->map(fn($i) => ($i->product->name ?? 'Unknown').' x'.$i->quantity)
+                            ->join(' | ');
 
-        // CSV HEADER
-        fputcsv($handle, [
-            'Transaction ID',
-            'Customer',
-            'Items',
-            'Payment Method',
-            'Status',
-            'Total Amount',
-            'Date'
-        ]);
+                        fputcsv($handle, [
+                            $tx->id,
+                            $tx->customer->name ?? 'Walk-in',
+                            $items,
+                            $tx->payment_method,
+                            $tx->status,
+                            $tx->total_amount,
+                            $tx->created_at->format('Y-m-d H:i:s'),
+                        ]);
+                    }
+                });
 
-        /*
-        |--------------------------------------------------------------------------
-        | IMPORTANT: EXACT DASHBOARD LOGIC
-        |--------------------------------------------------------------------------
-        | We do NOT rely only on $tenant->transactions()
-        | because some legacy rows may miss tenant_id.
-        |
-        | Instead we query transactions table directly.
-        */
+            fclose($handle);
 
-        Transaction::with(['customer', 'items.product'])
-            ->where('tenant_id', $tenant->id)   // primary filter
-            ->orderBy('id')
-            ->chunk(500, function ($transactions) use ($handle) {
-
-                foreach ($transactions as $tx) {
-
-                    // build items string
-                    $items = $tx->items
-                        ->map(fn($i) =>
-                            ($i->product->name ?? 'Unknown').' x'.$i->quantity
-                        )->join(' | ');
-
-                    fputcsv($handle, [
-
-                        $tx->id,
-
-                        $tx->customer->name ?? 'Walk-in',
-
-                        $items,
-
-                        $tx->payment_method,
-
-                        $tx->status,
-
-                        $tx->total_amount,
-
-                        $tx->created_at->format('Y-m-d H:i:s'),
-
-                    ]);
-                }
-
-            });
-
-        fclose($handle);
-
-    }, $filename);
-}
+        }, $filename);
+    }
 }
