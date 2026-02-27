@@ -107,10 +107,10 @@
 
 {{-- CLIENT --}}
 <h4>Bill To:</h4>
-<p><strong>{{ $invoice->client_name ?? $invoice->customer->name ?? 'N/A' }}</strong></p>
-<p>{{ $invoice->client_address ?? $invoice->customer->address ?? 'N/A' }}</p>
-<p>{{ $invoice->client_phone ?? $invoice->customer->phone ?? 'N/A' }}</p>
-<p>{{ $invoice->client_email ?? $invoice->customer->email ?? 'N/A' }}</p>
+<p><strong>Name:</strong> {{ $invoice->client_name ?? $invoice->customer->name ?? 'N/A' }}</p>
+<p><strong>Address:</strong> {{ $invoice->client_address ?? $invoice->customer->address ?? 'N/A' }}</p>
+<p><strong>Phone:</strong> {{ $invoice->client_phone ?? $invoice->customer->phone ?? 'N/A' }}</p>
+<p><strong>Email:</strong> {{ $invoice->client_email ?? $invoice->customer->email ?? 'N/A' }}</p>
 
 {{-- ITEMS --}}
 <table>

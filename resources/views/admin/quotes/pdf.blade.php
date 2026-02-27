@@ -97,10 +97,10 @@
 
 {{-- CLIENT --}}
 <h4>Bill To:</h4>
-<p><strong>{{ $quote->client_name }}</strong></p>
-<p>{{ $quote->client_address }}</p>
-<p>{{ $quote->client_phone }}</p>
-<p>{{ $quote->client_email }}</p>
+<p><strong>Client Name:</strong> {{ $quote->client_name }}</p>
+<p><strong>Client Address:</strong> {{ $quote->client_address }}</p>
+<p><strong>Client Phone:</strong> {{ $quote->client_phone }}</p>
+<p><strong>Client Email:</strong> {{ $quote->client_email }}</p>
 
 {{-- ITEMS --}}
 <table>
