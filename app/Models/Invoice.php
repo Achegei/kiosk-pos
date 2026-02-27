@@ -55,4 +55,27 @@ class Invoice extends Model
     {
         return $this->belongsTo(\App\Models\Tenant::class);
     }
+    protected static function booted()
+    {
+        static::creating(function ($invoice) {
+
+            if (!$invoice->invoice_number) {
+
+                $lastInvoice = self::where('tenant_id', $invoice->tenant_id)
+                    ->whereNotNull('invoice_number')
+                    ->orderByDesc('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                $nextNumber = 1;
+
+                if ($lastInvoice) {
+                    $lastNumber = (int) str_replace('INV-', '', $lastInvoice->invoice_number);
+                    $nextNumber = $lastNumber + 1;
+                }
+
+                $invoice->invoice_number = 'INV-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+            }
+        });
+    }
 }

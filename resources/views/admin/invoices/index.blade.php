@@ -59,7 +59,7 @@
                         </td>
 
                         <td class="p-3 font-semibold">
-                            {{ number_format($invoice->total_amount, 2) }}
+                            KES {{ number_format($invoice->total_amount, 2) }}
                         </td>
 
                         <td class="p-3">

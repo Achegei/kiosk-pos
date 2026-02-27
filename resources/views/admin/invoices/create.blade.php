@@ -32,7 +32,6 @@
 
         {{-- CUSTOMER SELECT --}}
         <div class="mb-4">
-            <label class="block font-semibold mb-2">Select Customer or Create New</label>
             <select id="customerSelect" name="customer_id" class="w-full border rounded p-2">
                 <option value="">-- New Customer --</option>
                 @foreach($customers as $customer)
@@ -110,9 +109,10 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function(){
+document.addEventListener('DOMContentLoaded', function() {
 
-    let cart = [];
+    // ===================== VARIABLES =====================
+    const cart = [];
     let productDebounce;
 
     const productSearch   = document.getElementById('productSearch');
@@ -120,45 +120,49 @@ document.addEventListener('DOMContentLoaded', function(){
     const customerSelect  = document.getElementById('customerSelect');
     const taxInput        = document.getElementById('tax');
     const discountInput   = document.getElementById('discount');
+    const totalDisplay    = document.getElementById('total');
+    const taxHidden       = document.getElementById('tax_input');
+    const discountHidden  = document.getElementById('discount_input');
+    const totalHidden     = document.getElementById('total_input');
+    const invoiceForm     = document.getElementById('invoiceForm');
 
-    // ================= PRODUCT SEARCH =================
+    // ===================== PRODUCT SEARCH =====================
     productSearch.addEventListener('input', () => {
-        const q = productSearch.value.trim();
-        if (!q) { productResults.innerHTML=''; return; }
+        const query = productSearch.value.trim();
+        if (!query) {
+            productResults.innerHTML = '';
+            return;
+        }
 
         clearTimeout(productDebounce);
-        productDebounce = setTimeout(async ()=>{
+        productDebounce = setTimeout(async () => {
             try {
-                const res = await fetch(`/products/search?q=${encodeURIComponent(q)}`);
+                const res = await fetch(`/products/search?q=${encodeURIComponent(query)}`);
                 if (!res.ok) return;
-
                 const data = await res.json();
-                productResults.innerHTML='';
 
-                data.forEach(p=>{
+                productResults.innerHTML = '';
+                data.forEach(p => {
                     const div = document.createElement('div');
-                    div.className='p-2 border cursor-pointer hover:bg-indigo-50 flex justify-between';
-                    div.innerHTML=`
-                        <span>${p.name}</span>
-                        <span>${parseFloat(p.price).toFixed(2)}</span>
-                    `;
-                    div.onclick = ()=>{
-                        addToCart(p.id,p.name,parseFloat(p.price));
-                        productResults.innerHTML='';
-                        productSearch.value='';
-                    };
+                    div.className = 'p-2 border cursor-pointer hover:bg-indigo-50 flex justify-between';
+                    div.innerHTML = `<span>${p.name}</span><span>${parseFloat(p.price).toFixed(2)}</span>`;
+                    div.addEventListener('click', () => {
+                        addToCart(p.id, p.name, parseFloat(p.price));
+                        productResults.innerHTML = '';
+                        productSearch.value = '';
+                    });
                     productResults.appendChild(div);
                 });
-            } catch(e){
-                console.error('Search error:', e);
+            } catch (e) {
+                console.error('Product search error:', e);
             }
-        },300);
+        }, 300);
     });
 
-    // ================= CUSTOMER AUTO FILL =================
+    // ===================== CUSTOMER AUTO-FILL =====================
     customerSelect.addEventListener('change', () => {
         const option = customerSelect.selectedOptions[0];
-        if(!option || !option.value){
+        if (!option || !option.value) {
             fillClientInfo({});
             return;
         }
@@ -171,75 +175,135 @@ document.addEventListener('DOMContentLoaded', function(){
         });
     });
 
-    function fillClientInfo(customer){
+    function fillClientInfo(customer) {
         document.getElementById('client_name').value = customer.name || '';
         document.getElementById('client_email').value = customer.email || '';
         document.getElementById('client_phone').value = customer.phone || '';
         document.getElementById('client_address').value = customer.address || '';
     }
 
-    // ================= CART =================
-    function addToCart(id,name,price){
-        const existing = cart.find(x=>x.id==id);
-        if(existing) existing.qty++;
-        else cart.push({id,name,price,qty:1});
+    // ===================== CART FUNCTIONS =====================
+    function addToCart(id, name, price) {
+        const existing = cart.find(x => x.id === id);
+        if (existing) existing.qty++;
+        else cart.push({ id, name, price, qty: 1 });
         renderCart();
     }
 
-    function renderCart(){
-        const tbody = document.getElementById('cart');
-        let html='';
-        let subtotal=0;
+    function removeFromCart(index) {
+        cart.splice(index, 1);
+        renderCart();
+    }
 
-        cart.forEach((p,i)=>{
-            const lineTotal=p.qty*p.price;
-            subtotal+=lineTotal;
+    function updateQty(index, qty) {
+        cart[index].qty = Math.max(1, parseInt(qty) || 1);
+        renderCart();
+    }
 
-            html+=`
+    function renderCart() {
+        let html = '';
+        let subtotal = 0;
+
+        cart.forEach((p, i) => {
+            const lineTotal = p.qty * p.price;
+            subtotal += lineTotal;
+
+            html += `
             <tr>
                 <td>${p.name}</td>
-                <td>
-                    <input type="number"
-                        value="${p.qty}"
-                        min="1"
-                        class="border w-16 p-1"
-                        onchange="cart[${i}].qty=parseInt(this.value)||1; renderCart()">
-                </td>
+                <td><input type="number" value="${p.qty}" min="1" class="border w-16 p-1" data-index="${i}" data-action="updateQty"></td>
                 <td>${p.price.toFixed(2)}</td>
                 <td>${lineTotal.toFixed(2)}</td>
-                <td>
-                    <button type="button"
-                        onclick="cart.splice(${i},1); renderCart()"
-                        class="text-red-600 font-bold">X</button>
-                </td>
-
+                <td><button type="button" class="text-red-600 font-bold" data-index="${i}" data-action="remove">X</button></td>
                 <input type="hidden" name="items[${i}][product_id]" value="${p.id}">
                 <input type="hidden" name="items[${i}][qty]" value="${p.qty}">
             </tr>`;
         });
 
-        const tax = parseFloat(taxInput.value)||0;
-        const discount = parseFloat(discountInput.value)||0;
-        const total = Math.max(subtotal + subtotal*tax/100 - discount,0);
+        document.getElementById('cart').innerHTML = html;
 
-        tbody.innerHTML=html;
-        document.getElementById('total').innerText=total.toFixed(2);
-        document.getElementById('tax_input').value=tax;
-        document.getElementById('discount_input').value=discount;
-        document.getElementById('total_input').value=total;
+        const tax = parseFloat(taxInput.value) || 0;
+        const discount = parseFloat(discountInput.value) || 0;
+        const total = Math.max(subtotal + subtotal * tax / 100 - discount, 0);
+
+        totalDisplay.innerText = total.toFixed(2);
+        taxHidden.value = tax;
+        discountHidden.value = discount;
+        totalHidden.value = total;
+
+        // Attach event listeners to dynamic buttons and inputs
+        document.querySelectorAll('[data-action="remove"]').forEach(btn => {
+            btn.addEventListener('click', () => removeFromCart(btn.dataset.index));
+        });
+
+        document.querySelectorAll('[data-action="updateQty"]').forEach(input => {
+            input.addEventListener('change', () => updateQty(input.dataset.index, input.value));
+        });
     }
 
-    // ================= VALIDATION =================
-    document.getElementById('invoiceForm').addEventListener('submit', function(e){
-        if(!cart.length){
+    // ===================== TAX & DISCOUNT =====================
+    taxInput.addEventListener('change', renderCart);
+    discountInput.addEventListener('change', renderCart);
+
+    // ===================== FORM VALIDATION =====================
+    invoiceForm.addEventListener('submit', e => {
+        if (!cart.length) {
             e.preventDefault();
             alert('Add at least one product.');
         }
     });
 
-    taxInput.addEventListener('change', renderCart);
-    discountInput.addEventListener('change', renderCart);
+    // ===================== PRINT FUNCTION =====================
+    window.printInvoicePDF = function() {
+        if (!cart.length) {
+            alert('Add some products first!');
+            return;
+        }
 
+        const tenantName = "{{ $tenant->name ?? '' }}";
+        const tenantPhone = "{{ $tenant->phone ?? '' }}";
+        const tenantLogo = "{{ $tenant->logo ? asset('storage/' . $tenant->logo) : '' }}";
+        const tenantAddress = "{{ ($tenant->street_address ?? '') }} {{ ($tenant->building_name ?? '') }}";
+
+        const subtotal = cart.reduce((sum, p) => sum + p.qty * p.price, 0);
+        const tax = parseFloat(taxInput.value) || 0;
+        const discount = parseFloat(discountInput.value) || 0;
+        const total = Math.max(subtotal + subtotal * tax / 100 - discount, 0);
+
+        let html = `
+        <div style="font-family:sans-serif;max-width:800px;margin:auto;">
+            <div style="display:flex;justify-content:space-between;">
+                <div>
+                    <h2>${tenantName}</h2>
+                    <p>${tenantAddress}</p>
+                    <p>Phone: ${tenantPhone}</p>
+                </div>
+                ${tenantLogo ? `<img src="${tenantLogo}" style="max-height:80px;">` : ''}
+            </div>
+            <hr>
+            <table border="1" width="100%" cellpadding="5" cellspacing="0">
+                <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>`;
+
+        cart.forEach(p => {
+            html += `<tr>
+                <td>${p.name}</td>
+                <td>${p.qty}</td>
+                <td>${p.price.toFixed(2)}</td>
+                <td>${(p.qty * p.price).toFixed(2)}</td>
+            </tr>`;
+        });
+
+        html += `</table>
+            <p><strong>Total: ${total.toFixed(2)}</strong></p>
+        </div>`;
+
+        const w = window.open('', '_blank');
+        w.document.write(html);
+        w.document.close();
+        w.print();
+    };
+
+    // ===================== INITIAL RENDER =====================
     renderCart();
 });
 </script>
