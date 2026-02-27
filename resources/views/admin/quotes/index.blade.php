@@ -39,7 +39,7 @@
                         <td class="px-6 py-4 text-sm text-gray-600">{{ $quote->quote_number ?? $quote->id }}</td>
                         <td class="px-6 py-4 text-sm text-gray-800">{{ $quote->client_name ?? 'N/A' }}</td>
                         <td class="px-6 py-4 text-sm text-gray-800">{{ $quote->tenant->name ?? 'N/A' }}</td>
-                        <td class="px-6 py-4 text-sm font-semibold text-right">${{ number_format($quote->total_amount,2) }}</td>
+                        <td class="px-6 py-4 text-sm font-semibold text-right">KES {{ number_format($quote->total_amount,2) }}</td>
                         <td class="px-6 py-4 text-center">
                             <span class="px-3 py-1 rounded-full text-xs font-medium
                                 {{ $quote->status == 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800' }}">

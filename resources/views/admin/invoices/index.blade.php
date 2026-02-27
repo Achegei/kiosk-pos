@@ -37,7 +37,7 @@
                 @forelse($invoices as $invoice)
                     <tr class="border-t">
                         <td class="p-3 font-semibold">
-                            INV-{{ str_pad($invoice->id, 5, '0', STR_PAD_LEFT) }}
+                            {{ str_pad($invoice->invoice_number, 5, '0', STR_PAD_LEFT) }}
                         </td>
 
                         <td class="p-3">

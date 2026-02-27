@@ -99,16 +99,21 @@ class ProformaQuoteController extends Controller
         $discount = (float) ($request->discount ?? 0);
 
         // ---------------- GENERATE TENANT-SPECIFIC QUOTE NUMBER ----------------
-        $lastQuote = ProformaQuote::where('tenant_id', $tenantId)
-                        ->whereNotNull('quote_number')
-                        ->orderBy('id', 'desc')
-                        ->first();
+            $lastQuote = ProformaQuote::where('tenant_id', $tenantId)
+                            ->whereNotNull('quote_number')
+                            ->orderByDesc('quote_number')  // 🔥 order by quote_number, not id
+                            ->lockForUpdate()              // 🔥 prevents race conditions
+                            ->first();
 
-        $nextNumber = $lastQuote
-            ? ((int) filter_var($lastQuote->quote_number, FILTER_SANITIZE_NUMBER_INT)) + 1
-            : 1;
+            $nextNumber = 1;
 
-        $quoteNumber = 'PFQ-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+            if ($lastQuote && $lastQuote->quote_number) {
+                $lastNumber = (int) str_replace('PFQ-', '', $lastQuote->quote_number);
+                $nextNumber = $lastNumber + 1;
+            }
+
+            $quoteNumber = 'PFQ-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+
 
         // ---------------- AUTO POPULATE COMPANY FROM TENANT ----------------
         $companyAddress = trim(
@@ -381,14 +386,17 @@ public function convert(ProformaQuote $quote)
 
         // ---------------- GENERATE INVOICE NUMBER ----------------
         $lastInvoice = Invoice::where('tenant_id', $tenant->id)
-                            ->whereNotNull('invoice_number')
-                            ->orderBy('id', 'desc')
-                            ->lockForUpdate() // 🔥 prevents race condition
-                            ->first();
+            ->whereNotNull('invoice_number')
+            ->orderByDesc('invoice_number')
+            ->lockForUpdate()
+            ->first();
 
-        $nextNumber = $lastInvoice
-            ? ((int) filter_var($lastInvoice->invoice_number, FILTER_SANITIZE_NUMBER_INT)) + 1
-            : 1;
+        $nextNumber = 1;
+
+        if ($lastInvoice) {
+            $lastNumber = (int) str_replace('INV-', '', $lastInvoice->invoice_number);
+            $nextNumber = $lastNumber + 1;
+        }
 
         $invoiceNumber = 'INV-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
 

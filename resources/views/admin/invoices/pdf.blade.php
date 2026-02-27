@@ -72,7 +72,7 @@
     <tr>
         <td>
             <div class="box-number">
-              INV-{{ str_pad($invoice->id, 5, '0', STR_PAD_LEFT) }}
+              {{ str_pad($invoice->invoice_number, 5, '0', STR_PAD_LEFT) }}
             </div>
             <p>Date: {{ $invoice->created_at->format('d M Y') }}</p>
             @if($invoice->expiry_date)
