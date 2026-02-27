@@ -11,6 +11,8 @@ use App\Models\Customer;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use App\Models\Tenant;
+use App\Models\Invoice;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class ProformaQuoteController extends Controller
 {
@@ -364,24 +366,67 @@ public function searchCustomers(Request $request)
 // ================= CONVERT QUOTE TO INVOICE =================
 public function convert(ProformaQuote $quote)
 {
-    // Ensure tenant ownership
     abort_if($quote->tenant_id !== auth()->user()->tenant_id, 403);
 
+    // ✅ Strong duplicate prevention (do NOT rely only on status)
+    if (Invoice::where('proforma_quote_id', $quote->id)->exists()) {
+        return back()->with('info', 'This quote has already been converted to an invoice.');
+    }
+
     DB::beginTransaction();
+
     try {
-        // Create a new invoice from the quote
-        $invoice = \App\Models\Invoice::create([
-            'tenant_id' => $quote->tenant_id,
-            'staff_id' => auth()->id(),
+        $user = auth()->user();
+        $tenant = $user->tenant;
+
+        // ---------------- GENERATE INVOICE NUMBER ----------------
+        $lastInvoice = Invoice::where('tenant_id', $tenant->id)
+                            ->whereNotNull('invoice_number')
+                            ->orderBy('id', 'desc')
+                            ->lockForUpdate() // 🔥 prevents race condition
+                            ->first();
+
+        $nextNumber = $lastInvoice
+            ? ((int) filter_var($lastInvoice->invoice_number, FILTER_SANITIZE_NUMBER_INT)) + 1
+            : 1;
+
+        $invoiceNumber = 'INV-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+
+        // ---------------- CREATE INVOICE ----------------
+        $invoice = Invoice::create([
+            'invoice_number' => $invoiceNumber,
+            'tenant_id' => $tenant->id,
+            'staff_id' => $user->id,
             'customer_id' => $quote->customer_id,
-            'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . rand(1000,9999),
-            'total_amount' => $quote->total_amount,
+            'proforma_quote_id' => $quote->id, // ✅ important linkage
+
+            // Company Snapshot
+            'company_name' => $tenant->name,
+            'company_email' => $tenant->email,
+            'company_phone' => $tenant->phone,
+            'company_address' => trim(
+                ($tenant->street_address ?? '') . ' ' .
+                ($tenant->building_name ?? '') . ' ' .
+                ($tenant->office_number ?? '')
+            ),
+            'company_logo' => $tenant->logo,
+
+            // Client Snapshot
+            'client_name' => $quote->client_name,
+            'client_email' => $quote->client_email,
+            'client_phone' => $quote->client_phone,
+            'client_address' => $quote->client_address,
+
             'tax_percent' => $quote->tax_percent,
             'discount' => $quote->discount,
             'notes' => $quote->notes,
+            'expiry_date' => $quote->expiry_date,
+
+            'status' => 'Pending', // ✅ better than Draft for accounting
+            'total_amount' => $quote->total_amount,
         ]);
 
-        // Copy items
+        // ---------------- COPY ITEMS ----------------
         foreach ($quote->items as $item) {
             $invoice->items()->create([
                 'product_id' => $item->product_id,
@@ -391,16 +436,27 @@ public function convert(ProformaQuote $quote)
             ]);
         }
 
-        // Mark quote as converted
+        // ---------------- MARK QUOTE AS CONVERTED ----------------
         $quote->update(['status' => 'converted']);
 
         DB::commit();
 
         return redirect()->route('invoices.show', $invoice->id)
-                         ->with('success', 'Quote converted to Invoice successfully!');
+            ->with('success', 'Quote converted to Invoice successfully!');
+
     } catch (\Throwable $e) {
         DB::rollBack();
         return back()->with('error', $e->getMessage());
     }
 }
+
+    public function downloadPdf(ProformaQuote $quote)
+    {
+        $quote->load('items.product', 'tenant');
+
+        $pdf = Pdf::loadView('admin.quotes.pdf', compact('quote'))
+                ->setPaper('a4', 'portrait');
+
+        return $pdf->stream('Quote-'.$quote->quote_number.'.pdf');
+    }
 }

@@ -17,6 +17,7 @@ use App\Http\Controllers\Transactions\TransactionItemController;
 use App\Http\Controllers\Inventories\InventoryController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\ProformaQuotes\ProformaQuoteController;
+use App\Http\Controllers\Admin\Invoices\InvoiceController;
 
 
 
@@ -78,6 +79,11 @@ Route::prefix('admin/tenants/settings')->middleware(['web', 'auth'])->group(func
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->group(function () {
+    Route::patch('admin/invoices/{invoice}/status', [InvoiceController::class, 'updateStatus'])->name('invoices.updateStatus');
+    Route::get('admin/invoices/{invoice}/pdf', [InvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
+    Route::get('/quotes/{quote}/pdf', [ProformaQuoteController::class, 'downloadPdf'])
+    ->name('quotes.pdf');
+    Route::post('admin/invoices/pdf-preview', [InvoiceController::class, 'generatePdf'])->name('invoices.pdf.preview');
 
     /*
 |--------------------------------------------------------------------------
@@ -212,7 +218,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('admin')->group(function () {
         // Proforma Quotes
         Route::resource('quotes', ProformaQuoteController::class);
-        Route::post('admin/quotes/{quote}/convert', [ProformaQuoteController::class, 'convert'])->name('quotes.convert');
+        Route::post('quotes/{quote}/convert', [ProformaQuoteController::class, 'convert'])->name('quotes.convert');
         Route::resource('invoices', \App\Http\Controllers\Admin\Invoices\InvoiceController::class);
     });
 

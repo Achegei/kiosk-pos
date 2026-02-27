@@ -68,6 +68,9 @@
             <a href="{{ route('products.index') }}" class="flex px-6 py-3 hover:bg-gray-100">📦 Products</a>
             <a href="{{ route('inventories.index') }}" class="flex px-6 py-3 hover:bg-gray-100">🏬 Inventory</a>
             <a href="{{ route('quotes.index') }}" class="flex px-6 py-3 hover:bg-gray-100">📋 Quotes</a>
+            <a href="{{ route('invoices.index') }}" class="flex px-6 py-3 hover:bg-gray-100">
+                🧾 Invoices
+            </a>
             @if(auth()->user()->tenant)
             <a href="{{ route('admin.tenants.export', auth()->user()->tenant->id) }}"
             class="flex px-6 py-3 hover:bg-gray-100">
