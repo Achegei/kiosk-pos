@@ -17,7 +17,7 @@
         <div class="flex-grow flex justify-between items-start mb-2">
             <div>
                 <h1 class="text-2xl font-bold">
-                    Invoice {{ $invoice->invoice_number ? 'INV-'.str_pad($invoice->invoice_number,5,'0',STR_PAD_LEFT) : 'INV-'.$invoice->id }}
+                    INV-{{ str_pad($invoice->id, 5, '0', STR_PAD_LEFT) }}
                 </h1>
                 <p class="text-gray-600">Date: {{ $invoice->created_at->format('d M Y') }}</p>
                 @if($invoice->expiry_date)
