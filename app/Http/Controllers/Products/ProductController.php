@@ -11,6 +11,7 @@ class ProductController extends Controller
     public function index()
     {
         $products = Product::with('inventory')
+            ->where('tenant_id', auth()->user()->tenant_id) // only current tenant's products
             ->orderBy('created_at', 'desc')
             ->paginate(10);
 
@@ -73,45 +74,53 @@ class ProductController extends Controller
     }
 
     public function search(Request $request)
-    {
-        $query = $request->query('query');
-        if (!$query) return response()->json([]);
+{
+    $query = $request->query('query');
 
-        $products = Product::with('inventory')
-            ->where('is_active', 1)
-            ->where(function($q) use ($query){
-                $q->where('name', 'LIKE', "%{$query}%")
-                  ->orWhere('sku', 'LIKE', "%{$query}%");
-            })
-            ->take(10)
-            ->get()
-            ->map(fn($p) => [
+    if (!$query) {
+        return response()->json([]);
+    }
+
+    $products = Product::with('inventory')
+        ->where('is_active', 1)
+        ->where('tenant_id', auth()->user()->tenant_id) // ensure only current tenant's products
+        ->where(function($q) use ($query) {
+            $q->where('name', 'LIKE', "%{$query}%")
+              ->orWhere('sku', 'LIKE', "%{$query}%");
+        })
+        ->take(10)
+        ->get()
+        ->map(function($p) {
+            return [
                 'id'    => $p->id,
                 'name'  => $p->name,
                 'price' => (float) $p->price,
                 'stock' => optional($p->inventory)->quantity ?? 0,
-            ]);
+            ];
+        });
 
-        return response()->json($products);
+    return response()->json($products);
+}
+
+public function searchByBacode($barcode)
+{
+    $product = Product::with('inventory')
+        ->where('sku', $barcode)
+        ->where('is_active', 1)
+        ->where('tenant_id', auth()->user()->tenant_id) // ensure tenant scoping
+        ->first();
+
+    if (!$product) {
+        return response()->json([]);
     }
 
-    public function searchByBarcode($barcode)
-    {
-        $product = Product::with('inventory')
-            ->where('sku', $barcode)
-            ->where('is_active', 1)
-            ->first();
-
-        if (!$product) return response()->json([]);
-
-        return response()->json([
-            'id'    => $product->id,
-            'name'  => $product->name,
-            'price' => (float) $product->price,
-            'stock' => optional($product->inventory)->quantity ?? 0,
-        ]);
-    }
-
+    return response()->json([
+        'id'    => $product->id,
+        'name'  => $product->name,
+        'price' => (float) $product->price,
+        'stock' => optional($product->inventory)->quantity ?? 0,
+    ]);
+}
     /**
      * Ensure product belongs to tenant
      */

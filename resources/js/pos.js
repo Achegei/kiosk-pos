@@ -25,40 +25,35 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
     // ---------------- FETCH PRODUCTS ----------------
-    async function fetchProducts(query){
+  async function fetchProducts(query) {
+    if (!query) return [];
 
-        if(!query) return [];
+    try {
+        // Search by name
+        let res = await fetch(`/fetch/products?query=${encodeURIComponent(query)}`, {
+            headers: { 'X-DEVICE-ID': deviceId, 'Accept': 'application/json' }
+        });
 
-        try{
-
-            let res = await fetch(`/products/search?query=${encodeURIComponent(query)}`,{
-                headers:{'X-DEVICE-ID':deviceId,'Accept':'application/json'}
-            });
-
-            if(res.ok){
-                let data = await res.json();
-                if(data.length) return data;
-            }
-
-            res = await fetch(`/products/barcode/${encodeURIComponent(query)}`,{
-                headers:{'X-DEVICE-ID':deviceId,'Accept':'application/json'}
-            });
-
-            let product = await res.json();
-
-            if(product && !Array.isArray(product))
-                product=[product];
-
-            return product.length ? product : [];
-
-        }catch(e){
-
-            console.error("Fetch error:",e);
-            return [];
-
+        if (res.ok) {
+            let data = await res.json();
+            if (data.length) return data;
         }
-    }
 
+        // Fallback: search by barcode
+        res = await fetch(`/fetch/products/${encodeURIComponent(query)}`, {
+            headers: { 'X-DEVICE-ID': deviceId, 'Accept': 'application/json' }
+        });
+
+        let product = await res.json();
+        if (product && !Array.isArray(product)) product = [product];
+
+        return product.length ? product : [];
+
+    } catch (e) {
+        console.error("Fetch error:", e);
+        return [];
+    }
+}
 
     // ---------------- SUGGESTIONS ----------------
     function renderSuggestions(list){

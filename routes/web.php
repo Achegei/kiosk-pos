@@ -203,8 +203,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/products/barcode/{barcode}', [ProductController::class, 'searchByBarcode'])->name('products.barcode');
     Route::get('/customers/search', [ProformaQuoteController::class, 'searchCustomers'])
     ->name('customers.search');
+
+    // POS Product Search (not ProformaQuote)
+    Route::get('/fetch/products', [ProductController::class, 'search'])
+        ->name('products.fetch');
+    Route::get('/fetch/products/{barcode}', [ProductController::class, 'searchByBacode'])
+        ->name('products.fetch.barcode');
+
     });
 
+    
     /*
     |--------------------------------------------------------------------------
     | SETTINGS (ADMIN / SUPERVISOR ONLY)
@@ -217,7 +225,6 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('admin')->group(function () {
         // Proforma Quotes
-        Route::resource('quotes', ProformaQuoteController::class);
         Route::post('quotes/{quote}/convert', [ProformaQuoteController::class, 'convert'])->name('quotes.convert');
         Route::resource('invoices', \App\Http\Controllers\Admin\Invoices\InvoiceController::class);
     });
