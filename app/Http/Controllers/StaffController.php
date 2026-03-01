@@ -13,113 +13,164 @@ class StaffController extends Controller
         return auth()->user()->tenant_id;
     }
 
+    // ------------------- INDEX -------------------
     public function index()
     {
-        $user = auth()->user();
+        try {
+            $user = auth()->user();
+            $manageableRoles = User::creatableRoles($user);
 
-        $manageableRoles = User::creatableRoles($user);
+            // ✅ TENANT SAFE
+            $users = User::where('tenant_id', $this->tenantId())
+                ->whereIn('role', $manageableRoles)
+                ->orderByDesc('id')
+                ->get();
 
-        // ✅ TENANT SAFE
-        $users = User::where('tenant_id', $this->tenantId())
-            ->whereIn('role', $manageableRoles)
-            ->orderByDesc('id')
-            ->get();
+            return view('staff.index', compact('users','manageableRoles'));
 
-        return view('staff.index', compact('users','manageableRoles'));
+        } catch (\Throwable $e) {
+            Log::error('Failed to load staff list', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage()
+            ]);
+            abort(500, 'Unable to load staff list.');
+        }
     }
 
+    // ------------------- CREATE -------------------
     public function create()
     {
-        $roles = User::creatableRoles(auth()->user());
-        return view('staff.create', compact('roles'));
+        try {
+            $roles = User::creatableRoles(auth()->user());
+            return view('staff.create', compact('roles'));
+        } catch (\Throwable $e) {
+            Log::error('Failed to load staff create form', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage()
+            ]);
+            abort(500, 'Unable to load staff creation form.');
+        }
     }
 
+    // ------------------- STORE -------------------
     public function store(Request $request)
     {
         $tenantId = $this->tenantId();
 
         $data = $request->validate([
             'name' => 'required|string|max:255',
-
-            // ✅ TENANT-SCOPED EMAIL UNIQUE
             'email' => [
                 'required',
                 'email',
-                \Illuminate\Validation\Rule::unique('users')
-                    ->where(fn($q)=>$q->where('tenant_id',$tenantId))
+                Rule::unique('users')->where(fn($q) => $q->where('tenant_id', $tenantId))
             ],
-
             'password' => 'required|confirmed|min:6',
             'role' => 'required|in:super_admin,admin,supervisor,staff'
         ]);
 
-        // ✅ SECURITY HARD STOP
-        if(auth()->user()->isAdmin() && $data['role']==='super_admin'){
-            abort(403);
+        try {
+            // ✅ SECURITY HARD STOP
+            if(auth()->user()->isAdmin() && $data['role']==='super_admin'){
+                abort(403);
+            }
+
+            User::create([
+                'tenant_id' => $tenantId,
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => Hash::make($data['password']),
+                'role' => $data['role'],
+                'can_pos' => $request->boolean('can_pos')
+            ]);
+
+            return redirect()->route('staff.create')
+                ->with('success','Staff created');
+
+        } catch (\Throwable $e) {
+            Log::error('Failed to create staff', [
+                'user_id' => auth()->id(),
+                'input' => $request->all(),
+                'error' => $e->getMessage()
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to create staff. Please try again.');
         }
-
-        User::create([
-            'tenant_id' => $tenantId, // ⭐ CRITICAL
-            'name'=>$data['name'],
-            'email'=>$data['email'],
-            'password'=>Hash::make($data['password']),
-            'role'=>$data['role'],
-            'can_pos'=>$request->boolean('can_pos')
-        ]);
-
-        return redirect()->route('staff.create')
-            ->with('success','Staff created');
     }
 
+    // ------------------- EDIT -------------------
     public function edit($id)
     {
-        $roles = User::creatableRoles(auth()->user());
+        try {
+            $roles = User::creatableRoles(auth()->user());
 
-        // ✅ TENANT SAFE FIND
-        $staff = User::where('tenant_id',$this->tenantId())
-            ->findOrFail($id);
+            // ✅ TENANT SAFE FIND
+            $staff = User::where('tenant_id', $this->tenantId())
+                ->findOrFail($id);
 
-        return view('staff.edit', [
-            'user' => $staff,
-            'roles' => $roles
-        ]);
+            return view('staff.edit', [
+                'user' => $staff,
+                'roles' => $roles
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('Failed to load staff edit form', [
+                'user_id' => auth()->id(),
+                'staff_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            abort(500, 'Unable to load staff edit form.');
+        }
     }
 
+    // ------------------- UPDATE -------------------
     public function update(Request $request, $id)
     {
-        $staff = User::where('tenant_id',$this->tenantId())
-            ->findOrFail($id);
+        try {
+            $staff = User::where('tenant_id', $this->tenantId())
+                ->findOrFail($id);
 
-        $tenantId = $this->tenantId();
+            $tenantId = $this->tenantId();
 
-        $data = $request->validate([
-            'name'=>'required|string|max:255',
+            $data = $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => [
+                    'required',
+                    'email',
+                    Rule::unique('users')->ignore($staff->id)->where(fn($q) => $q->where('tenant_id', $tenantId))
+                ],
+                'role' => 'required|string',
+                'password' => 'nullable|min:6|confirmed',
+                'can_pos' => 'nullable|boolean'
+            ]);
 
-            // ✅ tenant-safe unique except current
-            'email'=>[
-                'required','email',
-                \Illuminate\Validation\Rule::unique('users')
-                    ->ignore($staff->id)
-                    ->where(fn($q)=>$q->where('tenant_id',$tenantId))
-            ],
+            if(!empty($data['password'])){
+                $staff->password = Hash::make($data['password']);
+            }
 
-            'role'=>'required|string',
-            'password'=>'nullable|min:6|confirmed',
-            'can_pos'=>'nullable|boolean'
-        ]);
+            $staff->name = $data['name'];
+            $staff->email = $data['email'];
+            $staff->role = $data['role'];
+            $staff->can_pos = $request->boolean('can_pos');
 
-        if(!empty($data['password'])){
-            $staff->password = Hash::make($data['password']);
+            $staff->save();
+
+            return redirect()->route('staff.index')
+                ->with('success','Staff updated');
+
+        } catch (\Throwable $e) {
+            Log::error('Failed to update staff', [
+                'user_id' => auth()->id(),
+                'staff_id' => $id,
+                'input' => $request->all(),
+                'error' => $e->getMessage()
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to update staff. Please try again.');
         }
-
-        $staff->name = $data['name'];
-        $staff->email = $data['email'];
-        $staff->role = $data['role'];
-        $staff->can_pos = $request->boolean('can_pos');
-
-        $staff->save();
-
-        return redirect()->route('staff.index')
-            ->with('success','Staff updated');
     }
 }

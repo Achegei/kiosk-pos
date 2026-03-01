@@ -73,6 +73,14 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'pos' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/pos.log'),
+            'level' => 'error',     // logs only errors and above
+            'days' => 30,           // keeps 30 days of logs
+            'replace_placeholders' => true,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

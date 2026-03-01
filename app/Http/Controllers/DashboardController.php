@@ -19,9 +19,16 @@ class DashboardController extends Controller
      * Role-based dashboard
      */
     public function dashboard()
-    {
+{
+    try {
         $user = auth()->user();
-        if (!$user) abort(403);
+        if (!$user) {
+            \Log::warning('Unauthorized dashboard access attempt', [
+                'ip' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+            ]);
+            abort(403, 'Unauthorized');
+        }
 
         $tenantId = $user->tenant_id;
 
@@ -34,21 +41,28 @@ class DashboardController extends Controller
         // ===== DEVICE REGISTER (TENANT SAFE)
         $uuid = request()->header('X-DEVICE-ID') ?? request()->input('device_uuid');
         if ($uuid && $user->role !== 'super_admin') {
-            Device::firstOrCreate(
-                [
-                    'device_uuid' => $uuid,
-                    'tenant_id' => $tenantId
-                ],
-                [
-                    'device_name' => request()->userAgent(),
-                    'license_expires_at' => now()->addDays(7)
-                ]
-            );
+            try {
+                Device::firstOrCreate(
+                    [
+                        'device_uuid' => $uuid,
+                        'tenant_id' => $tenantId
+                    ],
+                    [
+                        'device_name' => request()->userAgent(),
+                        'license_expires_at' => now()->addDays(7)
+                    ]
+                );
+            } catch (\Throwable $e) {
+                \Log::error('Device registration failed', [
+                    'user_id' => $user->id,
+                    'uuid' => $uuid,
+                    'error' => $e->getMessage()
+                ]);
+            }
         }
 
         $today = now()->startOfDay();
         $data = [];
-
         $lowStockThreshold = (int) setting('low_stock_threshold', 10);
 
         // ---------------- PRODUCTS ----------------
@@ -99,27 +113,54 @@ class DashboardController extends Controller
         }
 
         // ---------------- REGISTER / CASH MOVEMENTS ----------------
-        if (!in_array($user->role, ['admin', 'super_admin'])) {
-            // Staff & supervisor: only open registers
-            $openRegisters = RegisterSession::when($user->role !== 'super_admin', function ($query) use ($tenantId) {
-                    $query->where('tenant_id', $tenantId);
-                })
-                ->whereNull('closed_at')
-                ->get();
+        try {
+            if (!in_array($user->role, ['admin', 'super_admin'])) {
+                // Staff & supervisor: only open registers
+                $openRegisters = RegisterSession::when($user->role !== 'super_admin', function ($query) use ($tenantId) {
+                        $query->where('tenant_id', $tenantId);
+                    })
+                    ->whereNull('closed_at')
+                    ->get();
 
-            $data['openRegister'] = $openRegisters->first();
-            $data['openRegisters'] = $openRegisters;
+                $data['openRegister'] = $openRegisters->first();
+                $data['openRegisters'] = $openRegisters;
 
-            if ($openRegisters->isNotEmpty()) {
-                $registerIds = $openRegisters->pluck('id')->toArray();
+                if ($openRegisters->isNotEmpty()) {
+                    $registerIds = $openRegisters->pluck('id')->toArray();
+                    $tx = Transaction::whereIn('register_session_id', $registerIds);
 
-                $tx = Transaction::whereIn('register_session_id', $registerIds);
+                    $data['cashSales']   = (clone $tx)->where('payment_method', 'Cash')->sum('total_amount');
+                    $data['mpesaSales']  = (clone $tx)->where('payment_method', 'Mpesa')->sum('total_amount');
+                    $data['creditSales'] = (clone $tx)->where('payment_method', 'Credit')->sum('total_amount');
 
-                $data['cashSales']   = (clone $tx)->where('payment_method', 'Cash')->sum('total_amount');
-                $data['mpesaSales']  = (clone $tx)->where('payment_method', 'Mpesa')->sum('total_amount');
-                $data['creditSales'] = (clone $tx)->where('payment_method', 'Credit')->sum('total_amount');
+                    $mov = CashMovement::whereIn('register_session_id', $registerIds)
+                        ->selectRaw('type, SUM(amount) as total')
+                        ->groupBy('type')
+                        ->pluck('total', 'type')
+                        ->toArray();
 
-                $mov = CashMovement::whereIn('register_session_id', $registerIds)
+                    $data['drops']       = $mov['drop'] ?? 0;
+                    $data['expenses']    = $mov['expense'] ?? 0;
+                    $data['payouts']     = $mov['payout'] ?? 0;
+                    $data['deposits']    = $mov['deposit'] ?? 0;
+                    $data['adjustments'] = $mov['adjustment'] ?? 0;
+
+                    $data['moneyIn']  = $data['deposits'] + $data['adjustments'];
+                    $data['moneyOut'] = $data['drops'] + $data['expenses'] + $data['payouts'];
+                } else {
+                    foreach ([
+                        'cashSales','mpesaSales','creditSales','drops','expenses',
+                        'payouts','deposits','adjustments','moneyIn','moneyOut'
+                    ] as $k) {
+                        $data[$k] = 0;
+                    }
+                }
+            } else {
+                // Admin / super_admin: all cash movements for today
+                $data['openRegister'] = null;
+                $data['openRegisters'] = collect();
+
+                $mov = CashMovement::whereDate('created_at', $today)
                     ->selectRaw('type, SUM(amount) as total')
                     ->groupBy('type')
                     ->pluck('total', 'type')
@@ -133,43 +174,32 @@ class DashboardController extends Controller
 
                 $data['moneyIn']  = $data['deposits'] + $data['adjustments'];
                 $data['moneyOut'] = $data['drops'] + $data['expenses'] + $data['payouts'];
-            } else {
-                foreach ([
-                    'cashSales','mpesaSales','creditSales','drops','expenses',
-                    'payouts','deposits','adjustments','moneyIn','moneyOut'
-                ] as $k) {
-                    $data[$k] = 0;
-                }
+
+                $data['cashSales']   = Transaction::whereDate('created_at', $today)
+                                        ->where('payment_method', 'Cash')
+                                        ->sum('total_amount');
+                $data['mpesaSales']  = Transaction::whereDate('created_at', $today)
+                                        ->where('payment_method', 'Mpesa')
+                                        ->sum('total_amount');
+                $data['creditSales'] = Transaction::whereDate('created_at', $today)
+                                        ->where('payment_method', 'Credit')
+                                        ->sum('total_amount');
             }
-        } else {
-            // Admin / super_admin: all cash movements for today
-            $data['openRegister'] = null;
-            $data['openRegisters'] = collect();
+        } catch (\Throwable $e) {
+            \Log::error('Failed to load cash movements or register data', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
-            $mov = CashMovement::whereDate('created_at', $today)
-                ->selectRaw('type, SUM(amount) as total')
-                ->groupBy('type')
-                ->pluck('total', 'type')
-                ->toArray();
-
-            $data['drops']       = $mov['drop'] ?? 0;
-            $data['expenses']    = $mov['expense'] ?? 0;
-            $data['payouts']     = $mov['payout'] ?? 0;
-            $data['deposits']    = $mov['deposit'] ?? 0;
-            $data['adjustments'] = $mov['adjustment'] ?? 0;
-
-            $data['moneyIn']  = $data['deposits'] + $data['adjustments'];
-            $data['moneyOut'] = $data['drops'] + $data['expenses'] + $data['payouts'];
-
-            $data['cashSales']   = Transaction::whereDate('created_at', $today)
-                                    ->where('payment_method', 'Cash')
-                                    ->sum('total_amount');
-            $data['mpesaSales']  = Transaction::whereDate('created_at', $today)
-                                    ->where('payment_method', 'Mpesa')
-                                    ->sum('total_amount');
-            $data['creditSales'] = Transaction::whereDate('created_at', $today)
-                                    ->where('payment_method', 'Credit')
-                                    ->sum('total_amount');
+            // fallback empty values
+            foreach ([
+                'cashSales','mpesaSales','creditSales','drops','expenses',
+                'payouts','deposits','adjustments','moneyIn','moneyOut',
+                'openRegister','openRegisters'
+            ] as $k) {
+                $data[$k] = $k === 'openRegisters' ? collect() : 0;
+            }
         }
 
         // ---------------- RETURN VIEW ----------------
@@ -180,5 +210,16 @@ class DashboardController extends Controller
             'super_admin' => view('dashboard.super_admin', $data),
             default => abort(403)
         };
+
+    } catch (\Throwable $e) {
+        \Log::error('Dashboard loading failed', [
+            'user_id' => optional(auth()->user())->id,
+            'role' => optional(auth()->user())->role,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        abort(500, 'An error occurred while loading the dashboard.');
     }
+}
 }

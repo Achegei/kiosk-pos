@@ -17,126 +17,224 @@ class AuthController extends Controller
     // ---------------------------
     public function showLogin()
     {
-        return view('auth.login');
+        try {
+            return view('auth.login');
+        } catch (\Throwable $e) {
+            \Log::error('Failed to load login page', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withErrors('Unable to load login page. Please try again later.');
+        }
     }
 
     public function login(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|string',
-        ]);
+        {
+            try {
+                $request->validate([
+                    'email' => 'required|email',
+                    'password' => 'required|string',
+                ]);
 
-        // Optional: throttle login attempts
-        if (method_exists($this, 'hasTooManyLoginAttempts') && $this->hasTooManyLoginAttempts($request)) {
-            throw ValidationException::withMessages([
-                'email' => ['Too many login attempts. Please try again later.'],
-            ]);
+                // Optional: throttle login attempts
+                if (method_exists($this, 'hasTooManyLoginAttempts') && $this->hasTooManyLoginAttempts($request)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'email' => ['Too many login attempts. Please try again later.'],
+                    ]);
+                }
+
+                if (Auth::attempt($request->only('email', 'password'))) {
+                    $request->session()->regenerate();
+
+                    // Redirect based on role
+                    return match (Auth::user()->role) {
+                        'super_admin' => redirect()->route('superadmin.dashboard'),
+                        'admin', 'supervisor', 'staff' => redirect()->route('dashboard'),
+                        default => redirect('/'),
+                    };
+                }
+
+                // Increment failed attempts if throttling is enabled
+                if (method_exists($this, 'incrementLoginAttempts')) {
+                    $this->incrementLoginAttempts($request);
+                }
+
+                return back()->withErrors(['email' => 'Invalid credentials'])->withInput();
+
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                return back()->withErrors($e->errors())->withInput();
+            } catch (\Throwable $e) {
+                \Log::error('Login failed', [
+                    'email' => $request->email,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+
+                return back()->withErrors(['email' => 'Login failed. Please try again later.'])->withInput();
+            }
         }
-
-        if (Auth::attempt($request->only('email', 'password'))) {
-            $request->session()->regenerate();
-
-            // ✅ Redirect by role
-            return match (Auth::user()->role) {
-                'super_admin' => redirect()->route('superadmin.dashboard'),
-                'admin', 'supervisor', 'staff' => redirect()->route('dashboard'),
-                default => redirect('/'),
-            };
-        }
-
-        // Increment failed attempts if throttling is enabled
-        if (method_exists($this, 'incrementLoginAttempts')) {
-            $this->incrementLoginAttempts($request);
-        }
-
-        return back()->withErrors(['email' => 'Invalid credentials'])->withInput();
-    }
-
     // ---------------------------
     // REGISTRATION
     // ---------------------------
     public function showRegister()
     {
-        return view('auth.register');
+        try {
+            return view('auth.register');
+        } catch (\Throwable $e) {
+            \Log::error('Failed to load registration page', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withErrors('Unable to load registration page.');
+        }
     }
 
     public function register(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6|confirmed',
-            'role' => 'required|string',
-        ]);
+        {
+            try {
+                $request->validate([
+                    'name' => 'required|string|max:255',
+                    'email' => 'required|email|unique:users,email',
+                    'password' => 'required|string|min:6|confirmed',
+                    'role' => 'required|string',
+                ]);
 
-        User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'role' => $request->role,
-            'password' => Hash::make($request->password),
-        ]);
+                User::create([
+                    'name' => $request->name,
+                    'email' => $request->email,
+                    'role' => $request->role,
+                    'password' => Hash::make($request->password),
+                ]);
 
-        return redirect()->route('login')->with('success', 'User created successfully.');
-    }
+                return redirect()->route('login')->with('success', 'User created successfully.');
 
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                return back()->withErrors($e->errors())->withInput();
+            } catch (\Throwable $e) {
+                \Log::error('Registration failed', [
+                    'request' => $request->all(),
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+
+                return back()->withErrors('Unable to register. Please try again later.')->withInput();
+            }
+        }
     // ---------------------------
     // LOGOUT
     // ---------------------------
     public function logout(Request $request)
-    {
-        Auth::logout();
+        {
+            try {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
 
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+                return redirect()->route('login');
 
-        return redirect()->route('login');
-    }
+            } catch (\Throwable $e) {
+                \Log::error('Logout failed', [
+                    'user_id' => auth()->id(),
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+
+                return back()->withErrors('Unable to logout. Please try again.');
+            }
+        }
 
     // ---------------------------
     // PASSWORD RESET
     // ---------------------------
     public function showForgotPassword()
-    {
-        return view('auth.forgot-password');
-    }
+        {
+            try {
+                return view('auth.forgot-password');
+            } catch (\Throwable $e) {
+                \Log::error('Failed to load forgot password page', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+
+                return back()->withErrors('Unable to load forgot password page.');
+            }
+        }
 
     public function sendResetLink(Request $request)
     {
-        $request->validate(['email' => 'required|email']);
+        try {
+            $request->validate(['email' => 'required|email']);
 
-        $status = Password::sendResetLink($request->only('email'));
+            $status = Password::sendResetLink($request->only('email'));
 
-        return $status === Password::RESET_LINK_SENT
-            ? back()->with(['status' => __($status)])
-            : back()->withErrors(['email' => __($status)]);
+            return $status === Password::RESET_LINK_SENT
+                ? back()->with(['status' => __($status)])
+                : back()->withErrors(['email' => __($status)]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withErrors($e->errors());
+        } catch (\Throwable $e) {
+            \Log::error('Failed to send password reset link', [
+                'email' => $request->email,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withErrors('Unable to send reset link. Please try again later.');
+        }
     }
 
     public function showResetForm($token)
     {
-        return view('auth.reset-password', ['token' => $token]);
+        try {
+            return view('auth.reset-password', ['token' => $token]);
+        } catch (\Throwable $e) {
+            \Log::error('Failed to load password reset form', [
+                'token' => $token,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withErrors('Unable to load password reset form.');
+        }
     }
 
     public function resetPassword(Request $request)
     {
-        $request->validate([
-            'token' => 'required',
-            'email' => 'required|email',
-            'password' => 'required|string|min:6|confirmed',
-        ]);
+        try {
+            $request->validate([
+                'token' => 'required',
+                'email' => 'required|email',
+                'password' => 'required|string|min:6|confirmed',
+            ]);
 
-        $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
-            function (User $user, string $password) {
-                $user->forceFill([
-                    'password' => Hash::make($password),
-                    'remember_token' => Str::random(60),
-                ])->save();
-            }
-        );
+            $status = Password::reset(
+                $request->only('email', 'password', 'password_confirmation', 'token'),
+                function (User $user, string $password) {
+                    $user->forceFill([
+                        'password' => Hash::make($password),
+                        'remember_token' => Str::random(60),
+                    ])->save();
+                }
+            );
 
-        return $status === Password::PASSWORD_RESET
-            ? redirect()->route('login')->with('success', 'Password reset successful.')
-            : back()->withErrors(['email' => [__($status)]]);
+            return $status === Password::PASSWORD_RESET
+                ? redirect()->route('login')->with('success', 'Password reset successful.')
+                : back()->withErrors(['email' => [__($status)]]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withErrors($e->errors());
+        } catch (\Throwable $e) {
+            \Log::error('Password reset failed', [
+                'email' => $request->email,
+                'token' => $request->token,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withErrors('Unable to reset password. Please try again later.');
+        }
     }
 }
