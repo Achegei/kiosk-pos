@@ -312,7 +312,7 @@ form.addEventListener('submit', async function(e){
 
         const method=document.getElementById('payment_method').value;
         const subtotal=parseFloat(subtotalEl.innerText);
-        let mpesaCode=null;
+        let mpesaRef = null;
         let cashGiven = parseFloat(cashInput.value) || 0;
 
         /* ================= CASH ================= */
@@ -325,23 +325,23 @@ form.addEventListener('submit', async function(e){
         }
 
         /* ================= MPESA ================= */
-        if(method==="Mpesa"){
+        if(method === "Mpesa") {
             const result = await Swal.fire({
-                title:'Enter Mpesa Confirmation Code',
-                input:'text',
-                inputPlaceholder:'Example: QWE123ABC',
-                confirmButtonText:'Confirm Payment',
-                showCancelButton:true
+                title: 'Enter Mpesa Confirmation Code',
+                input: 'text',
+                inputPlaceholder: 'Example: QWE123ABC',
+                confirmButtonText: 'Confirm Payment',
+                showCancelButton: true
             });
 
-            if(!result.value){
+            if (!result.value) {
                 Swal.fire('Mpesa code required','','error');
                 checkoutPending = false;
                 return;
             }
 
-            mpesaCode=result.value;
-            cashGiven = subtotal; // treat MPESA as fully paid
+            mpesaRef = result.value;   // <- capture here
+            cashGiven = subtotal;      // treat as fully paid
         }
 
         /* ================= CREDIT ================= */
@@ -360,7 +360,7 @@ form.addEventListener('submit', async function(e){
             _token:document.querySelector('input[name=_token]').value,
             customer_id:document.getElementById('customer').value,
             payment_method:method,
-            mpesa_code:mpesaCode,
+            mpesa_code: mpesaRef,
             products:window.cart.map(p=>({id:p.id, quantity:p.quantity}))
         };
 
@@ -385,6 +385,8 @@ form.addEventListener('submit', async function(e){
         const receiptData = {
             ...data.receipt,
             user: window.currentUserName || "Staff", // ensure staff name is included
+            payment: method,
+            mpesa_reference: mpesaRef,
             cash: cashGiven,
             change: Math.max(0, cashGiven - subtotal)
         };
@@ -531,9 +533,20 @@ ${items}
 TOTAL: KES ${receipt.total}
 </div>
 
-Paid via: ${receipt.payment ?? 'Cash'}<br>
-Cash received: KES ${cashTaken}<br>
-Change given: KES ${changeGiven}
+${receipt.payment_method === "Credit" ? `
+    <strong>Paid via: CREDIT</strong><br>
+    Credit To: ${receipt.customer?.name ?? ''}<br>
+    Previous Credit: KES ${Number(receipt.customer?.previous_credit ?? 0).toFixed(2)}<br>
+    Credit This Sale: KES ${Number(receipt.customer?.credit_added ?? 0).toFixed(2)}<br>
+    <strong>Total Credit Owed: KES ${Number(receipt.customer?.total_credit ?? 0).toFixed(2)}</strong>
+` : receipt.payment_method === "Mpesa" ? `
+    <strong>Paid via: Mpesa</strong><br>
+    Mpesa Ref: ${receipt.mpesa_reference ?? ''}
+` : `
+    Paid via: ${receipt.payment ?? 'Cash'}<br>
+    Cash received: KES ${cashTaken}<br>
+    Change given: KES ${changeGiven}
+`}
 
 <hr>
 
@@ -872,3 +885,25 @@ async function fetchCashMovements(sessionId){
     }
 }
 
+const customerCreditDiv = document.getElementById('customerCreditDiv');
+const customerCreditSpan = document.getElementById('customerCredit');
+
+customerSelect?.addEventListener('change', async function() {
+    const customerId = this.value;
+    if(!customerId) {
+        customerCreditDiv.classList.add('hidden');
+        customerCreditSpan.textContent = "0.00";
+        return;
+    }
+
+    try {
+        const res = await fetch(`/customers/${customerId}/credit`);
+        const data = await res.json();
+        if(data.success){
+            customerCreditDiv.classList.remove('hidden');
+            customerCreditSpan.textContent = parseFloat(data.credit).toFixed(2);
+        }
+    } catch(err) {
+        console.error('Fetch credit error:', err);
+    }
+});

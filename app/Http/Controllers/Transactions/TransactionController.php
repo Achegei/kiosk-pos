@@ -154,127 +154,157 @@ class TransactionController extends Controller
             }
         }
 
-    /* ============================
+   /* ============================
        POS CHECKOUT
-    ============================ */
-    public function posCheckout(Request $request)
-        {
-            try {
-                $request->validate([
-                    'products'=>'required|array|min:1',
-                    'products.*.id'=>'required|exists:products,id',
-                    'products.*.quantity'=>'required|integer|min:1',
-                    'customer_id'=>'nullable|exists:customers,id',
-                    'payment_method'=>'required|in:Cash,Mpesa,Credit',
-                    'mpesa_code'=>'nullable|string|max:20',
-                ]);
+============================ */
+public function posCheckout(Request $request)
+{
+    try {
+        $request->validate([
+            'products' => 'required|array|min:1',
+            'products.*.id' => 'required|exists:products,id',
+            'products.*.quantity' => 'required|integer|min:1',
+            'customer_id' => 'nullable|exists:customers,id',
+            'payment_method' => 'required|in:Cash,Mpesa,Credit',
+            'mpesa_code' => 'nullable|string|max:20',
+        ]);
 
-                $receipt = null;
+        $receipt = null;
+        $customer = null;
+        $prevCredit = 0;
 
-                DB::transaction(function() use ($request,&$receipt){
-                    $session = auth()->user()->openRegister;
-                    if(!$session){
-                        throw new \Exception("Register is not open. Please open register first.");
-                    }
-
-                    $total = 0;
-
-                    if($request->payment_method==='Credit' && !$request->customer_id){
-                        throw new \Exception("Credit sale requires customer");
-                    }
-
-                    $transaction = Transaction::create([
-                        'customer_id' => $request->customer_id,
-                        'total_amount' => 0,
-                        'payment_method' => $request->payment_method,
-                        'status' => $request->payment_method === 'Credit' ? 'On Credit' : 'Paid',
-                        'register_session_id' => $session->id,
-                        'staff_id' => auth()->id(),
-                        'tenant_id' => auth()->user()->tenant_id,
-                    ]);
-
-                    foreach($request->products as $row){
-                        $product = Product::where('tenant_id', auth()->user()->tenant_id)
-                            ->findOrFail($row['id']);
-                        $qty = (int)$row['quantity'];
-
-                        $inventory = Inventory::where('tenant_id', auth()->user()->tenant_id)
-                            ->where('product_id',$product->id)
-                            ->lockForUpdate()
-                            ->first();
-
-                        if(!$inventory) throw new \Exception("Inventory missing for ".$product->name);
-                        if($inventory->quantity < $qty) throw new \Exception("Not enough stock for ".$product->name);
-
-                        $line = $qty * $product->price;
-
-                        TransactionItem::create([
-                            'transaction_id'=>$transaction->id,
-                            'product_id'=>$product->id,
-                            'quantity'=>$qty,
-                            'price'=>$product->price,
-                            'total'=>$line
-                        ]);
-
-                        $inventory->decrement('quantity',$qty);
-
-                        $total += $line;
-                    }
-
-                    $transaction->update(['total_amount'=>$total]);
-
-                    if($request->payment_method==='Credit' && $request->customer_id){
-                        Customer::where('tenant_id', auth()->user()->tenant_id)
-                            ->find($request->customer_id)
-                            ->increment('credit',$total);
-                    }
-
-                    TransactionPayment::create([
-                        'transaction_id' => $transaction->id,
-                        'amount' => $total,
-                        'method' => $request->payment_method,
-                    ]);
-
-                    $transaction->load('items.product');
-
-                    $receipt = [
-                        'id'=>$transaction->id,
-                        'total'=>$total,
-                        'items'=>$transaction->items->map(fn($i)=>[
-                            'name'=>$i->product->name,
-                            'qty'=>$i->quantity,
-                            'price'=>(float)$i->price,
-                            'total'=>$i->quantity * $i->price
-                        ])
-                    ];
-
-                });
-
-                return response()->json([
-                    'success'=>true,
-                    'receipt'=>$receipt
-                ]);
-
-            } catch (\Illuminate\Validation\ValidationException $e){
-                return response()->json([
-                    'success'=>false,
-                    'message'=>$e->errors()
-                ],422);
-            } catch(\Throwable $e){
-                \Log::error("POS CHECKOUT FAILED", [
-                    'user_id' => auth()->id(),
-                    'tenant_id' => auth()->user()->tenant_id,
-                    'request' => $request->all(),
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
-
-                return response()->json([
-                    'success'=>false,
-                    'message'=>$e->getMessage()
-                ]);
+        DB::transaction(function () use ($request, &$receipt) {
+            $session = auth()->user()->openRegister;
+            if (!$session) {
+                throw new \Exception("Register is not open. Please open register first.");
             }
-        }
+
+            $total = 0;
+            $customerData = null;
+
+            // Credit requires a customer
+            if ($request->payment_method === 'Credit' && !$request->customer_id) {
+                throw new \Exception("Credit sale requires a customer");
+            }
+
+            // Fetch customer and previous credit if Credit sale
+            if ($request->payment_method === 'Credit' && $request->customer_id) {
+                $customer = Customer::where('tenant_id', auth()->user()->tenant_id)
+                    ->findOrFail($request->customer_id);
+
+                $prevCredit = $customer->credit ?? 0;
+                $customerData = [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'previous_credit' => $prevCredit,
+                ];
+            }
+
+            // Create transaction
+            $transaction = Transaction::create([
+                'customer_id' => $request->customer_id,
+                'total_amount' => 0, // will update later
+                'payment_method' => $request->payment_method,
+                'status' => $request->payment_method === 'Credit' ? 'On Credit' : 'Paid',
+                'register_session_id' => $session->id,
+                'staff_id' => auth()->id(),
+                'tenant_id' => auth()->user()->tenant_id,
+                'mpesa_reference' => $request->payment_method === 'Mpesa' ? $request->mpesa_code : null,
+            ]);
+
+            // Process products
+            foreach ($request->products as $row) {
+                $product = Product::where('tenant_id', auth()->user()->tenant_id)
+                    ->findOrFail($row['id']);
+                $qty = (int)$row['quantity'];
+
+                $inventory = Inventory::where('tenant_id', auth()->user()->tenant_id)
+                    ->where('product_id', $product->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$inventory) throw new \Exception("Inventory missing for " . $product->name);
+                if ($inventory->quantity < $qty) throw new \Exception("Not enough stock for " . $product->name);
+
+                $lineTotal = $qty * $product->price;
+
+                TransactionItem::create([
+                    'transaction_id' => $transaction->id,
+                    'product_id' => $product->id,
+                    'quantity' => $qty,
+                    'price' => $product->price,
+                    'total' => $lineTotal,
+                ]);
+
+                $inventory->decrement('quantity', $qty);
+
+                $total += $lineTotal;
+            }
+
+            // Update transaction total
+            $transaction->update(['total_amount' => $total]);
+
+            // Update customer credit if Credit sale
+            if ($request->payment_method === 'Credit' && $customer) {
+
+                $customer->increment('credit', $total);
+
+                $customer->refresh();
+
+                $customerData['credit_added'] = $total;
+                $customerData['total_credit'] = $customer->credit;
+            }
+
+            // Save payment record
+            TransactionPayment::create([
+                'transaction_id' => $transaction->id,
+                'amount' => $total,
+                'method' => $request->payment_method,
+                'reference' => $request->payment_method === 'Mpesa' ? $request->mpesa_code : null,
+            ]);
+
+            $transaction->load('items.product', 'customer');
+
+            // Prepare receipt
+            $receipt = [
+                'id' => $transaction->id,
+                'total' => $total,
+                'payment_method' => $transaction->payment_method,
+                'mpesa_reference' => $transaction->mpesa_reference,
+                'customer' => $customerData,
+                'items' => $transaction->items->map(fn ($i) => [
+                    'name' => $i->product->name,
+                    'qty' => $i->quantity,
+                    'price' => (float)$i->price,
+                    'total' => $i->quantity * $i->price,
+                ]),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'receipt' => $receipt,
+        ]);
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->errors(),
+        ], 422);
+    } catch (\Throwable $e) {
+        \Log::error("POS CHECKOUT FAILED", [
+            'user_id' => auth()->id(),
+            'tenant_id' => auth()->user()->tenant_id,
+            'request' => $request->all(),
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ]);
+    }
+}
     /* ============================
        DELETE TRANSACTION
     ============================ */

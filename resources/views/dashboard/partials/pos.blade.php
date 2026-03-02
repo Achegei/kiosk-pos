@@ -82,7 +82,6 @@ $store = config('store');
                 <button id="triggerCloseRegisterBtn" class="px-4 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700">
                     Close Register
                 </button>
-                <a href="{{ route('register.print', $session->id) }}" target="_blank">🖨 Print</a>
             @endif
 
             <h3 class="text-2xl font-bold text-gray-800">🛒 Smart POS</h3>
@@ -102,6 +101,10 @@ $store = config('store');
                         </option>
                     @endforeach
                 </select>
+                {{-- Live Credit Display --}}
+                <div id="customerCreditDiv" class="mt-2 text-sm text-gray-600 hidden">
+                    Previous Credit: KES <span id="customerCredit">0.00</span>
+                </div>
                 <button type="button" id="newCustomerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg shadow">
                     + New
                 </button>
@@ -151,11 +154,17 @@ $store = config('store');
             <input type="hidden" name="products" id="products">
             <input type="hidden" name="register_session_id" value="{{ $openRegister->id ?? '' }}">
 
+            {{-- Payment Method --}}
             <select name="payment_method" id="payment_method" class="rounded-lg border-gray-300 p-3">
                 <option value="Cash">Cash</option>
                 <option value="Mpesa">Mpesa</option>
                 <option value="Credit">Credit</option>
             </select>
+
+            {{-- Mpesa Reference --}}
+            <div id="mpesaRefDiv" class="hidden ml-2">
+                <input type="text" name="mpesa_reference" id="mpesaReference" placeholder="Mpesa Ref" class="rounded-lg border p-2">
+            </div>
 
             <button type="submit" class="px-10 py-4 bg-indigo-600 text-white rounded-xl text-lg font-bold hover:bg-indigo-700">
                 💳 CHECKOUT
