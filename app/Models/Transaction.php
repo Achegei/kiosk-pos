@@ -17,7 +17,8 @@ class Transaction extends Model
         'register_session_id',   // ⭐ REQUIRED
         'user_id',               // ⭐ REQUIRED
         'mpesa_code',
-        'tenant_id'
+        'tenant_id',
+        'receipt_number',
         
     ];
 

@@ -182,10 +182,11 @@ public function posCheckout(Request $request)
 
         $receipt = null;
         $customer = null;
-        $prevCredit = 0;
 
-        DB::transaction(function () use ($request, &$receipt) {
+        DB::transaction(function () use ($request, &$receipt, &$customer) {
+            $tenantId = auth()->user()->tenant_id;
             $session = auth()->user()->openRegister;
+
             if (!$session) {
                 throw new \Exception("Register is not open. Please open register first.");
             }
@@ -193,25 +194,38 @@ public function posCheckout(Request $request)
             $total = 0;
             $customerData = null;
 
-            // Credit requires a customer
+            // ----------------------------
+            // Tenant-specific receipt number
+            // ----------------------------
+            $lastTransaction = Transaction::where('tenant_id', $tenantId)
+                ->lockForUpdate() // prevents race conditions
+                ->latest('receipt_number')
+                ->first();
+
+            $nextReceiptNumber = $lastTransaction ? $lastTransaction->receipt_number + 1 : 1;
+
+            // ----------------------------
+            // Credit requires customer
+            // ----------------------------
             if ($request->payment_method === 'Credit' && !$request->customer_id) {
                 throw new \Exception("Credit sale requires a customer");
             }
 
-            // Fetch customer and previous credit if Credit sale
+            // Fetch customer data if credit
             if ($request->payment_method === 'Credit' && $request->customer_id) {
-                $customer = Customer::where('tenant_id', auth()->user()->tenant_id)
+                $customer = Customer::where('tenant_id', $tenantId)
                     ->findOrFail($request->customer_id);
 
-                $prevCredit = $customer->credit ?? 0;
                 $customerData = [
                     'id' => $customer->id,
                     'name' => $customer->name,
-                    'previous_credit' => $prevCredit,
+                    'previous_credit' => $customer->credit ?? 0,
                 ];
             }
 
+            // ----------------------------
             // Create transaction
+            // ----------------------------
             $transaction = Transaction::create([
                 'customer_id' => $request->customer_id,
                 'total_amount' => 0, // will update later
@@ -219,17 +233,19 @@ public function posCheckout(Request $request)
                 'status' => $request->payment_method === 'Credit' ? 'On Credit' : 'Paid',
                 'register_session_id' => $session->id,
                 'staff_id' => auth()->id(),
-                'tenant_id' => auth()->user()->tenant_id,
+                'tenant_id' => $tenantId,
                 'mpesa_reference' => $request->payment_method === 'Mpesa' ? $request->mpesa_code : null,
+                'receipt_number' => $nextReceiptNumber,
             ]);
 
+            // ----------------------------
             // Process products
+            // ----------------------------
             foreach ($request->products as $row) {
-                $product = Product::where('tenant_id', auth()->user()->tenant_id)
-                    ->findOrFail($row['id']);
+                $product = Product::where('tenant_id', $tenantId)->findOrFail($row['id']);
                 $qty = (int)$row['quantity'];
 
-                $inventory = Inventory::where('tenant_id', auth()->user()->tenant_id)
+                $inventory = Inventory::where('tenant_id', $tenantId)
                     ->where('product_id', $product->id)
                     ->lockForUpdate()
                     ->first();
@@ -257,11 +273,8 @@ public function posCheckout(Request $request)
 
             // Update customer credit if Credit sale
             if ($request->payment_method === 'Credit' && $customer) {
-
                 $customer->increment('credit', $total);
-
                 $customer->refresh();
-
                 $customerData['credit_added'] = $total;
                 $customerData['total_credit'] = $customer->credit;
             }
@@ -279,6 +292,7 @@ public function posCheckout(Request $request)
             // Prepare receipt
             $receipt = [
                 'id' => $transaction->id,
+                'receipt_number' => $transaction->receipt_number,
                 'total' => $total,
                 'payment_method' => $transaction->payment_method,
                 'mpesa_reference' => $transaction->mpesa_reference,
@@ -296,6 +310,7 @@ public function posCheckout(Request $request)
             'success' => true,
             'receipt' => $receipt,
         ]);
+
     } catch (\Illuminate\Validation\ValidationException $e) {
         return response()->json([
             'success' => false,

@@ -520,8 +520,8 @@ window.printReceipt = function(receipt){
 
     <hr>
 
-    Receipt #: ${receipt.id}<br>
-    Date: ${new Date().toLocaleString('en-KE',{timeZone:'Africa/Nairobi'})}<br>
+    Receipt #: ${receipt.receipt_number}<br>
+    Date: ${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}<br>
 
     You were served by: ${staffName}
 
@@ -723,8 +723,8 @@ function completeSale(cart, customerId = null, paymentMethod = 'Cash', mpesaCode
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                console.log('Sale completed online:', data.receipt.id);
-                Swal.fire('Sale completed online!', `Receipt: #${data.receipt.id}`, 'success');
+                console.log('Sale completed online:', data.receipt.receipt_number);
+                //Swal.fire('Sale completed online!', `Receipt: #${data.receipt.receipt_number}`, 'success');
             } else {
                 console.warn('Server rejected sale, saving offline', data);
                 saveOfflineSale(salePayload);
