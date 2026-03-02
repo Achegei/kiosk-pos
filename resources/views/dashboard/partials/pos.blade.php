@@ -25,7 +25,25 @@ $store = config('store');
                 Open Register
             </button>
         </form>
+      @php
+        $lastClosed = \App\Models\RegisterSession::where('tenant_id', auth()->user()->tenant_id)
+            ->where('user_id', auth()->id())     // important: filter by logged-in user
+            ->where('status','closed')
+            ->latest('closed_at')                // latest by closed_at, not ID
+            ->first();
+        @endphp
 
+        @if($lastClosed)
+            <a href="{{ route('register.print', $lastClosed->id) }}" target="_blank"
+            class="w-full block text-center py-3 mb-4 bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-900 transition shadow hover:shadow-lg">
+            🖨 Print My Last Closed
+            </a>
+        @else
+            <button disabled
+                class="w-full block text-center py-3 mb-4 bg-gray-400 text-white rounded-xl font-bold cursor-not-allowed">
+                No Closed Registers Yet
+            </button>
+        @endif
         {{-- Log Out Button --}}
         <a href="#" id="logoutBtn" class="w-full block text-center py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-100 text-red-600">
             Log Out
@@ -64,6 +82,7 @@ $store = config('store');
                 <button id="triggerCloseRegisterBtn" class="px-4 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700">
                     Close Register
                 </button>
+                <a href="{{ route('register.print', $session->id) }}" target="_blank">🖨 Print</a>
             @endif
 
             <h3 class="text-2xl font-bold text-gray-800">🛒 Smart POS</h3>
@@ -227,6 +246,7 @@ $store = config('store');
                 <button type="button" id="refreshRegisterBtn" class="flex-1 py-2 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600">
                     🔄 Refresh Totals
                 </button>
+
             </div>
             {{-- Closing Cash Input --}}
             <div class="mb-4">
@@ -476,62 +496,42 @@ document.addEventListener('DOMContentLoaded', ()=>{
     } else if (container) container.classList.add('hidden');
 }
 
-    // ---------------- CLOSE REGISTER FORM ----------------
-    document.getElementById('closeRegisterForm')?.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const form = this;
-        const formData = new FormData(form);
-        try {
-            const res = await fetch(form.action, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                },
-                body: formData
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                const report = data.report;
+  // ---------------- CLOSE REGISTER FORM ----------------
+document.getElementById('closeRegisterForm')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
 
-                function formatTimestamp(ts) {
-                    if (!ts) return '';
-                    return new Date(ts).toLocaleString('en-KE', {
-                        timeZone: 'Africa/Nairobi',
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                    });
-                }
+    const form = this;
+    const formData = new FormData(form);
 
-                window.printRegisterClosing({
-                    user: report.cashier || window.currentUserName || "Staff",
-                    user_id: report.user_id || window.currentUserId || '',
-                    session_id: report.session_id || '',
-                    opened: formatTimestamp(report.opened_at),
-                    closed: formatTimestamp(report.closed_at),
-                    opening: parseFloat(report.opening_cash) || 0,
-                    cash: parseFloat(report.cash_sales) || 0,
-                    mpesa: parseFloat(report.mpesa_sales) || 0,
-                    credit: parseFloat(report.credit_sales) || 0,
-                    expected: parseFloat(report.expected_cash) || 0,
-                    actual: parseFloat(report.counted_cash) || 0
-                });
+    try {
+        const res = await fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
 
-                localStorage.removeItem('offline_sales_queue');
-                window.location.href = '/login';
-            } else {
-                alert(data.message || 'Failed to close register');
-            }
-        } catch (err) {
-            console.error(err);
-            alert('Error closing register, check console');
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+
+            // Clear any offline cache if you use it
+            localStorage.removeItem('offline_sales_queue');
+
+            // 🔥 Redirect to backend PDF
+            window.location.href = data.redirect;
+
+        } else {
+            alert(data.message || 'Failed to close register');
         }
-    });
 
+    } catch (error) {
+        console.error('Close register error:', error);
+        alert('Server error while closing register');
+    }
+});
     // ---------------- SAVE CASH MOVEMENT ----------------
    document.getElementById('cashMovementForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();

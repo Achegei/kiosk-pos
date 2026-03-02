@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use App\Models\RegisterSession;
 use App\Models\Transaction;
 use App\Models\CashMovement;
+use Illuminate\Support\Facades\Log;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class RegisterController extends Controller
 {
@@ -100,92 +102,90 @@ class RegisterController extends Controller
         }
     }
 
-
-    // CLOSE REGISTER
 public function close(Request $request)
-    {
-        $request->validate(['closing_cash' => 'required|numeric|min:0']);
+{
+    $request->validate([
+        'closing_cash' => 'required|numeric|min:0'
+    ]);
 
-        $tenant = $this->tenantId();
+    try {
 
-        try {
-            $session = RegisterSession::where('tenant_id', $tenant)
-                ->where('status', 'open')
-                ->where('user_id', auth()->id())
-                ->firstOrFail();
+        $session = RegisterSession::where('user_id', auth()->id())
+            ->where('status', 'open')
+            ->firstOrFail();
 
-            $sales = Transaction::where('tenant_id', $tenant)
-                ->where('register_session_id', $session->id)
-                ->selectRaw("
-                    SUM(CASE WHEN payment_method='Cash' THEN total_amount ELSE 0 END) cash,
-                    SUM(CASE WHEN payment_method='Mpesa' THEN total_amount ELSE 0 END) mpesa,
-                    SUM(CASE WHEN payment_method='Credit' THEN total_amount ELSE 0 END) credit
-                ")->first();
+        // ---------------- SALES TOTALS ----------------
+        $sales = $session->transactions()
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total_amount END),0) AS cash,
+                COALESCE(SUM(CASE WHEN payment_method='Mpesa' THEN total_amount END),0) AS mpesa,
+                COALESCE(SUM(CASE WHEN payment_method='Credit' THEN total_amount END),0) AS credit
+            ")->first();
 
-            $movements = CashMovement::where('tenant_id', $tenant)
-                ->where('register_session_id', $session->id)
-                ->selectRaw("
-                    SUM(CASE WHEN type='drop' THEN amount ELSE 0 END) drops,
-                    SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) expenses,
-                    SUM(CASE WHEN type='payout' THEN amount ELSE 0 END) payouts,
-                    SUM(CASE WHEN type='deposit' THEN amount ELSE 0 END) deposits,
-                    SUM(CASE WHEN type='adjustment' THEN amount ELSE 0 END) adjustments
-                ")->first();
+        // ---------------- CASH MOVEMENTS ----------------
+        $movements = CashMovement::where('register_session_id', $session->id)
+            ->where('tenant_id', $session->tenant_id)
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN type='drop' THEN amount END),0) AS drops,
+                COALESCE(SUM(CASE WHEN type='expense' THEN amount END),0) AS expenses,
+                COALESCE(SUM(CASE WHEN type='payout' THEN amount END),0) AS payouts,
+                COALESCE(SUM(CASE WHEN type='deposit' THEN amount END),0) AS deposits,
+                COALESCE(SUM(CASE WHEN type='adjustment' THEN amount END),0) AS adjustments
+            ")->first();
 
-            $expectedCash = $session->calculateExpectedCash($tenant);
-            $difference = $request->closing_cash - $expectedCash;
+        $cashDrops       = $movements->drops;
+        $cashExpenses    = $movements->expenses;
+        $cashPayouts     = $movements->payouts;
+        $cashDeposits    = $movements->deposits;
+        $cashAdjustments = $movements->adjustments;
 
-            $session->update([
-                'closing_cash' => $request->closing_cash,
-                'closed_at' => now(),
-                'status' => 'closed',
-                'cash_sales' => $sales->cash ?? 0,
-                'mpesa_sales' => $sales->mpesa ?? 0,
-                'credit_sales' => $sales->credit ?? 0,
-                'difference' => $difference,
-                'cash_drops' => $movements->drops ?? 0,
-                'cash_expenses' => $movements->expenses ?? 0,
-                'cash_payouts' => $movements->payouts ?? 0,
-                'cash_deposits' => $movements->deposits ?? 0,
-                'cash_adjustments' => $movements->adjustments ?? 0,
-            ]);
+        // ---------------- EXPECTED CASH ----------------
+        $expectedCash =
+            $session->opening_cash
+            + $sales->cash
+            + $cashDeposits
+            + $cashAdjustments
+            - $cashDrops
+            - $cashExpenses
+            - $cashPayouts;
 
-            return response()->json([
-                'success' => true,
-                'report' => [
-                    'cashier' => $session->user->name,
-                    'user_id' => $session->user_id,
-                    'session_id' => $session->id,
-                    'opened_at' => $session->opened_at,
-                    'closed_at' => $session->closed_at,
-                    'opening_cash' => $session->opening_cash,
-                    'cash_sales' => $session->cash_sales,
-                    'mpesa_sales' => $session->mpesa_sales,
-                    'credit_sales' => $session->credit_sales,
-                    'expected_cash' => $expectedCash,
-                    'counted_cash' => $request->closing_cash,
-                    'drops' => $movements->drops ?? 0,
-                    'expenses' => $movements->expenses ?? 0,
-                    'payouts' => $movements->payouts ?? 0,
-                    'deposits' => $movements->deposits ?? 0,
-                    'adjustments' => $movements->adjustments ?? 0,
-                ]
-            ]);
+        $difference = $request->closing_cash - $expectedCash;
 
-        } catch (\Throwable $e) {
-            Log::error('Failed to close register', [
-                'tenant' => $tenant,
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage()
-            ]);
+        // ---------------- UPDATE SESSION ----------------
+        $session->update([
+            'closing_cash'     => $request->closing_cash,
+            'closed_at'        => now(),
+            'status'           => 'closed',
+            'cash_sales'       => $sales->cash,
+            'mpesa_sales'      => $sales->mpesa,
+            'credit_sales'     => $sales->credit,
+            'difference'       => $difference,
+            'cash_drops'       => $cashDrops,
+            'cash_expenses'    => $cashExpenses,
+            'cash_payouts'     => $cashPayouts,
+            'cash_deposits'    => $cashDeposits,
+            'cash_adjustments' => $cashAdjustments,
+        ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to close register'
-            ], 500);
-        }
+        // ✅ RETURN REDIRECT TO PDF ROUTE
+        return response()->json([
+            'success'  => true,
+            'redirect' => route('register.print', $session->id)
+        ]);
+
+    } catch (\Throwable $e) {
+
+        Log::error('Failed to close register', [
+            'user_id' => auth()->id(),
+            'error'   => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to close register'
+        ], 500);
     }
-
+}
     // TOTALS ENDPOINT (TENANT SAFE)
      public function totals($id)
     {
@@ -297,5 +297,80 @@ public function close(Request $request)
             ], 500);
         }
     }
+
+    public function printEndOfDay($id)
+{
+    $tenantId = $this->tenantId();
+
+    $session = RegisterSession::where('tenant_id', $tenantId)
+        ->where('user_id', auth()->id()) //user owns this session
+        ->where('status', 'closed')
+        ->findOrFail($id);
+
+    // 🔥 Get Tenant (Store Info)
+    $tenant = \App\Models\Tenant::findOrFail($tenantId);
+
+    // SALES
+    $sales = Transaction::where('tenant_id', $tenantId)
+        ->where('register_session_id', $session->id)
+        ->selectRaw("
+            COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total_amount END),0) cash,
+            COALESCE(SUM(CASE WHEN payment_method='Mpesa' THEN total_amount END),0) mpesa,
+            COALESCE(SUM(CASE WHEN payment_method='Credit' THEN total_amount END),0) credit
+        ")
+        ->first();
+
+    // MOVEMENTS
+    $movements = CashMovement::where('tenant_id', $tenantId)
+        ->where('register_session_id', $session->id)
+        ->selectRaw("
+            COALESCE(SUM(CASE WHEN type='drop' THEN amount END),0) drops,
+            COALESCE(SUM(CASE WHEN type='expense' THEN amount END),0) expenses,
+            COALESCE(SUM(CASE WHEN type='payout' THEN amount END),0) payouts,
+            COALESCE(SUM(CASE WHEN type='deposit' THEN amount END),0) deposits,
+            COALESCE(SUM(CASE WHEN type='adjustment' THEN amount END),0) adjustments
+        ")
+        ->first();
+
+    $expectedCash =
+        $session->opening_cash
+        + $sales->cash
+        + $movements->deposits
+        + $movements->adjustments
+        - $movements->drops
+        - $movements->expenses
+        - $movements->payouts;
+
+    $difference = $session->closing_cash - $expectedCash;
+
+    $pdf = Pdf::loadView('reports.end_of_day', compact(
+        'tenant',
+        'session',
+        'sales',
+        'movements',
+        'expectedCash',
+        'difference'
+    ))->setPaper([0, 0, 226, 900]); // 80mm
+
+    return $pdf->stream("register-{$session->id}.pdf");
+}
+
+public function printLast()
+{
+    // Get the latest closed register
+    $lastClosed = RegisterSession::where('tenant_id', auth()->user()->tenant_id)
+        ->where('user_id', auth()->id())  // <-- filter by logged-in user
+        ->where('status','closed')
+        ->latest('closed_at')
+        ->first();
+
+    if (!$lastClosed) {
+        abort(404, 'No closed register found');
+    }
+
+    // Redirect to the standard print route
+    return redirect()->route('register.print', $lastClosed->id);
+}
+
 
 }

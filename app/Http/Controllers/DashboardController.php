@@ -125,6 +125,16 @@ class DashboardController extends Controller
                 $data['openRegister'] = $openRegisters->first();
                 $data['openRegisters'] = $openRegisters;
 
+                // ---------------- LAST CLOSED REGISTERS ----------------
+                $closedRegisters = RegisterSession::where('tenant_id', $tenantId)
+                    ->where('status', 'closed')         // only closed registers
+                    ->where('user_id', $user->id)       // optional: filter by current user
+                    ->latest('closed_at')               // newest first
+                    ->take(5)                           // last 5
+                    ->get();
+
+                $data['closedRegisters'] = $closedRegisters;
+
                 if ($openRegisters->isNotEmpty()) {
                     $registerIds = $openRegisters->pluck('id')->toArray();
                     $tx = Transaction::whereIn('register_session_id', $registerIds);
@@ -202,6 +212,7 @@ class DashboardController extends Controller
             }
         }
 
+        $data['session'] = $data['openRegister'] ?? null;
         // ---------------- RETURN VIEW ----------------
         return match ($user->role) {
             'staff' => view('dashboard.pos', $data),

@@ -8,6 +8,7 @@ use App\Models\Tenant;
 use App\Services\TenantInitializer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Models\Transaction;
+use Illuminate\Support\Facades\DB;
 
 class TenantController extends Controller
 {

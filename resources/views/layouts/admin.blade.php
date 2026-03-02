@@ -77,7 +77,7 @@
             📥 Export Data
             </a>
             @endif
-
+            
             {{-- Administration --}}
             @if(auth()->user()->isAdmin())
             <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">

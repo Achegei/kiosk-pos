@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class RegisterSession extends Model
 {
@@ -13,8 +14,16 @@ class RegisterSession extends Model
         'opened_at',
         'closed_at',
         'status',
-        'tenant_id'
-        
+        'tenant_id',
+        'cash_sales',
+        'mpesa_sales',
+        'credit_sales',
+        'difference',
+        'cash_drops',
+        'cash_expenses',
+        'cash_payouts',
+        'cash_deposits',
+        'cash_adjustments',
     ];
 
     protected $casts = [
@@ -39,69 +48,68 @@ class RegisterSession extends Model
     }
 
     // ---------------- CALCULATIONS ----------------
-    // ---------------- CALCULATIONS ----------------
-public function calculateExpectedCash(?int $tenantId = null)
+    /**
+     * Calculate expected cash in the register
+     */
+    public function calculateExpectedCash(?int $tenantId = null): float
     {
-        // Base transactions query for this register
-        $tx = $this->transactions()
-            ->where('payment_method', 'Cash');
-
-        // Apply tenant filter for non-super admins
+        // 1️⃣ Cash sales
+        $cashSalesQuery = $this->transactions()->where('payment_method', 'Cash');
         if ($tenantId) {
-            $tx->where('tenant_id', $tenantId);
+            $cashSalesQuery->where('tenant_id', $tenantId);
         }
+        $cashSales = (float) $cashSalesQuery->sum('total_amount');
 
-        $cashSales = $tx->sum('total_amount');
+        // 2️⃣ Cash movements (fresh query for each type)
+        $movements = $this->cashMovementsSummary($tenantId);
 
-        // Base cash movements query
-        $cmQuery = $this->cashMovements();
-
-        if ($tenantId) {
-            $cmQuery->where('tenant_id', $tenantId);
-        }
-
-        $drops       = $cmQuery->where('type','drop')->sum('amount');
-        $expenses    = $cmQuery->where('type','expense')->sum('amount');
-        $payouts     = $cmQuery->where('type','payout')->sum('amount');
-        $deposits    = $cmQuery->where('type','deposit')->sum('amount');
-        $adjustments = $cmQuery->where('type','adjustment')->sum('amount');
-
-        return $this->opening_cash + $cashSales + $deposits + $adjustments - $drops - $expenses - $payouts;
+        // 3️⃣ Compute expected cash
+        return (float) (
+            $this->opening_cash
+            + $cashSales
+            + $movements['deposit']
+            + $movements['adjustment']
+            - $movements['drop']
+            - $movements['expense']
+            - $movements['payout']
+        );
     }
 
     // ---------------- CASH MOVEMENTS SUMMARY ----------------
-    public function cashMovementsSummary(?int $tenantId = null): array
-    {
-        $types = ['drop', 'expense', 'payout', 'deposit', 'adjustment'];
-        $summary = [];
+    /**
+     * Return sum of all cash movement types
+     */
+    public function cashMovementsSummary(): array
+        {
+            $movements = $this->cashMovements()
+                ->get()
+                ->groupBy('type')
+                ->map(fn($items) => $items->sum('amount'));
 
-        foreach ($types as $type) {
-            $query = $this->cashMovements()->where('type', $type);
-
-            // ✅ Apply tenant filter if provided (for tenant admins)
-            if ($tenantId) {
-                $query->where('tenant_id', $tenantId);
-            }
-
-            $summary[$type] = (float) $query->sum('amount');
+            return [
+                'drop'       => (float) $movements->get('drop', 0),
+                'expense'    => (float) $movements->get('expense', 0),
+                'payout'     => (float) $movements->get('payout', 0),
+                'deposit'    => (float) $movements->get('deposit', 0),
+                'adjustment' => (float) $movements->get('adjustment', 0),
+            ];
         }
 
-        return $summary;
-    }
-
+    // ---------------- MODEL BOOT ----------------
     protected static function booted()
     {
+        // Automatically set tenant_id on creation
         static::creating(function ($model) {
-            if(auth()->check() && empty($model->tenant_id)){
+            if (auth()->check() && empty($model->tenant_id)) {
                 $model->tenant_id = auth()->user()->tenant_id;
             }
         });
 
-        static::addGlobalScope('tenant', function ($query) {
-            if(auth()->check()){
+        // Global tenant scope
+        static::addGlobalScope('tenant', function (Builder $query) {
+            if (auth()->check()) {
                 $query->where('tenant_id', auth()->user()->tenant_id);
             }
         });
     }
-
 }

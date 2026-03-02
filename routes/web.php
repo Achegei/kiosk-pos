@@ -51,15 +51,21 @@ Route::middleware('guest')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->group(function () {
-    // Open register via AJAX
-    Route::post('/register/open', [RegisterController::class,'open'])->name('register.open');
 
-    // Optional normal open/close forms
+    // Print last closed register (static route)
+    Route::get('/register/last/print', [RegisterController::class, 'printLast'])
+         ->name('register.print.last');
+
+    // Print specific register (dynamic route)
+    Route::get('register/{register}/print', [RegisterController::class, 'printEndOfDay'])
+         ->name('register.print');
+
+    // Other routes...
+    Route::post('/register/open', [RegisterController::class,'open'])->name('register.open');
     Route::get('/register/open-form', [RegisterController::class,'openForm'])->name('register.open.form');
     Route::get('/register/close-form', [RegisterController::class,'closeForm'])->name('register.close.form');
     Route::post('/register/close', [RegisterController::class,'close'])->name('register.close');
-    Route::get('/register/{id}/movements', [RegisterController::class, 'movements'])
-    ->name('register.movements');
+    Route::get('/register/{register}/movements', [RegisterController::class, 'movements'])->name('register.movements');
     Route::get('/register/{register}/totals', [RegisterController::class,'totals'])->name('register.totals');
     Route::get('/register/close/data',[RegisterController::class,'closeData']);
 });

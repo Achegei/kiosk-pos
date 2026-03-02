@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Customer;
 use App\Models\Inventory;
 use App\Models\TransactionPayment;
+use Illuminate\Support\Facades\Log;
 
 class TransactionController extends Controller
 {
