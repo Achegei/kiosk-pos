@@ -69,21 +69,32 @@ class TransactionController extends Controller
        POS PAGE
     ============================ */
     public function pos()
-        {
-            try {
-                $customers = Customer::where('tenant_id', auth()->user()->tenant_id)->get();
-                return view('transactions.pos', compact('customers'));
+    {
+        try {
+            $customers = Customer::where('tenant_id', auth()->user()->tenant_id)->get();
 
-            } catch (\Throwable $e) {
-                \Log::error('Failed to load POS page', [
-                    'user_id' => auth()->id(),
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
+            // ✅ Get current tenant/store info
+            $tenant = auth()->user()->tenant; // assuming User has tenant relationship
+            $store = [
+                'name' => $tenant->name,
+                'address' => trim("{$tenant->building_name} {$tenant->street_address}"),
+                'phone' => $tenant->phone ?? 'N/A',
+                'footer' => $tenant->default_notes ?? 'Thank you for shopping with us!'
+            ];
 
-                return back()->withErrors('Unable to open POS page.');
-            }
+            // pass store info to view
+            return view('transactions.pos', compact('customers', 'store'));
+
+        } catch (\Throwable $e) {
+            \Log::error('Failed to load POS page', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withErrors('Unable to open POS page.');
         }
+    }
 
     /* ============================
        POS SEARCH

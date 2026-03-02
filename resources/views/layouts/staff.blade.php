@@ -18,11 +18,12 @@
     </main>
     @stack('scripts')
 <script>
-window.STORE_INFO = {
-    name: "{{ config('store.name') }}",
-    address: "{{ config('store.address') }}",
-    phone: "{{ config('store.phone') }}"
-};
+window.STORE = {!! json_encode([
+    'name' => auth()->user()->tenant->name,
+    'address' => trim(auth()->user()->tenant->building_name . ' ' . auth()->user()->tenant->street_address),
+    'phone' => auth()->user()->tenant->phone ?? 'N/A',
+    'footer' => auth()->user()->tenant->default_notes ?? 'Thank you for shopping with us!'
+], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) !!};
 </script>
 </body>
 </html>

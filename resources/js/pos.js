@@ -452,124 +452,110 @@ form.addEventListener('submit', async function(e){
 // ---------------- PRINT RECEIPT ----------------
 window.printReceipt = function(receipt){
 
-const STORE = {
-    name: "SMART SHOP SUPERMARKET",
-    address: "Kiambu Road, Nairobi",
-    phone: "0712345678",
+    const storeInfo = window.STORE || {
+    name: "Default Store",
+    address: "",
+    phone: "",
     footer: "Thank you for shopping with us!"
 };
 
-// ✅ FORCE STAFF NAME FROM GLOBAL (fallback safe)
-const staffName = receipt.user || window.currentUserName || "Staff";
+    // ✅ FORCE STAFF NAME FROM GLOBAL (fallback safe)
+    const staffName = receipt.user || window.currentUserName || "Staff";
 
-// ✅ CASH + CHANGE SAFE VALUES
-const cashTaken = receipt.cash ?? document.getElementById('cashGiven')?.value ?? 0;
-const changeGiven = receipt.change ?? document.getElementById('change')?.innerText ?? 0;
+    // ✅ CASH + CHANGE SAFE VALUES
+    const cashTaken = receipt.cash ?? document.getElementById('cashGiven')?.value ?? 0;
+    const changeGiven = receipt.change ?? document.getElementById('change')?.innerText ?? 0;
 
-let items = '';
+    let items = '';
+    receipt.items?.forEach(item=>{
+        items += `
+            <div class="row">
+                <div>${item.name}</div>
+                <div>${item.qty} x ${item.price}</div>
+            </div>
+            <div class="row total">
+                <div></div>
+                <div>KES ${item.total}</div>
+            </div>
+        `;
+    });
 
-receipt.items?.forEach(item=>{
-    items += `
-        <div class="row">
-            <div>${item.name}</div>
-            <div>${item.qty} x ${item.price}</div>
-        </div>
-        <div class="row total">
-            <div></div>
-            <div>KES ${item.total}</div>
-        </div>
+    const paymentSection = receipt.payment_method === "Credit" ? `
+        <strong>Paid via: CREDIT</strong><br>
+        Credit To: ${receipt.customer?.name ?? ''}<br>
+        Previous Credit: KES ${Number(receipt.customer?.previous_credit ?? 0).toFixed(2)}<br>
+        Credit This Sale: KES ${Number(receipt.customer?.credit_added ?? 0).toFixed(2)}<br>
+        <strong>Total Credit Owed: KES ${Number(receipt.customer?.total_credit ?? 0).toFixed(2)}</strong>
+    ` : receipt.payment_method === "Mpesa" ? `
+        <strong>Paid via: Mpesa</strong><br>
+        Mpesa Ref: ${receipt.mpesa_reference ?? ''}<br>
+        Cash received: KES ${cashTaken}<br>
+        Change given: KES ${changeGiven}
+    ` : `
+        Paid via: Cash<br>
+        Cash received: KES ${cashTaken}<br>
+        Change given: KES ${changeGiven}
     `;
-});
 
-const html = `
-<html>
-<head>
-<title>Receipt</title>
+    const html = `
+    <html>
+    <head>
+    <title>Receipt</title>
+    <style>
+    body{ font-family: monospace; width:80mm; margin:auto; padding:10px; }
+    .center{text-align:center;}
+    .row{display:flex;justify-content:space-between;font-size:13px;}
+    .total{font-weight:bold;}
+    hr{border-top:1px dashed #000;}
+    .big{ font-size:18px; font-weight:bold; text-align:center; margin-top:10px; }
+    </style>
+    </head>
+    <body>
 
-<style>
-body{
-    font-family: monospace;
-    width:80mm;
-    margin:auto;
-    padding:10px;
-}
-.center{text-align:center;}
-.row{display:flex;justify-content:space-between;font-size:13px;}
-.total{font-weight:bold;}
-hr{border-top:1px dashed #000;}
-.big{
-    font-size:18px;
-    font-weight:bold;
-    text-align:center;
-    margin-top:10px;
-}
-</style>
+    <div class="center">
+        <div style="font-size:20px;font-weight:bold">${storeInfo.name}</div>
+        ${storeInfo.address}<br>
+        Tel: ${storeInfo.phone}
+    </div>
 
-</head>
+    <hr>
 
-<body>
+    Receipt #: ${receipt.id}<br>
+    Date: ${new Date().toLocaleString('en-KE',{timeZone:'Africa/Nairobi'})}<br>
 
-<div class="center">
-    <div style="font-size:20px;font-weight:bold">${STORE.name}</div>
-    ${STORE.address}<br>
-    Tel: ${STORE.phone}
-</div>
+    You were served by: ${staffName}
 
-<hr>
+    <hr>
 
-Receipt #: ${receipt.id}<br>
-Date: ${new Date().toLocaleString('en-KE',{timeZone:'Africa/Nairobi'})}<br>
+    ${items}
 
-<!-- ✅ NEW PROFESSIONAL TEXT -->
-You were served by: ${staffName}
+    <hr>
 
-<hr>
+    <div class="big">
+    TOTAL: KES ${receipt.total}
+    </div>
 
-${items}
+    ${paymentSection}
 
-<hr>
+    <hr>
 
-<div class="big">
-TOTAL: KES ${receipt.total}
-</div>
+    <div class="center">
+        ${storeInfo.footer}
+    </div>
 
-${receipt.payment_method === "Credit" ? `
-    <strong>Paid via: CREDIT</strong><br>
-    Credit To: ${receipt.customer?.name ?? ''}<br>
-    Previous Credit: KES ${Number(receipt.customer?.previous_credit ?? 0).toFixed(2)}<br>
-    Credit This Sale: KES ${Number(receipt.customer?.credit_added ?? 0).toFixed(2)}<br>
-    <strong>Total Credit Owed: KES ${Number(receipt.customer?.total_credit ?? 0).toFixed(2)}</strong>
-` : receipt.payment_method === "Mpesa" ? `
-    <strong>Paid via: Mpesa</strong><br>
-    Mpesa Ref: ${receipt.mpesa_reference ?? ''}
-` : `
-    Paid via: ${receipt.payment ?? 'Cash'}<br>
-    Cash received: KES ${cashTaken}<br>
-    Change given: KES ${changeGiven}
-`}
+    </body>
+    </html>
+    `;
 
-<hr>
+    const w = window.open('', '', 'width=340,height=700');
+    w.document.write(html);
+    w.document.close();
 
-<div class="center">
-${STORE.footer}
-</div>
-
-</body>
-</html>
-`;
-
-const w = window.open('', '', 'width=340,height=700');
-
-w.document.write(html);
-w.document.close();
-
-setTimeout(()=>{
-    w.focus();
-    w.print();
-},400);
-
+    setTimeout(()=>{
+        w.focus();
+        w.print();
+    },400);
 };
-
 
     // ---------------- OUTSIDE CLICK ----------------
     document.addEventListener('click',e=>{

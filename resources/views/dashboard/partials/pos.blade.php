@@ -309,6 +309,10 @@ $store = config('store');
 @endif
 {{-- JS --}}
 <script>
+    // Expose store info from backend to JS
+    window.STORE = @json($store);
+</script>
+<script>
 document.addEventListener('DOMContentLoaded', ()=>{
 
     const formOpen = document.getElementById('openRegisterForm');
