@@ -177,7 +177,7 @@ public function posCheckout(Request $request)
             'products.*.quantity' => 'required|integer|min:1',
             'customer_id' => 'nullable|exists:customers,id',
             'payment_method' => 'required|in:Cash,Mpesa,Credit',
-            'mpesa_code' => 'nullable|string|max:20',
+            'mpesa_code' => 'nullable|string|max:10',
         ]);
 
         $receipt = null;
@@ -234,7 +234,7 @@ public function posCheckout(Request $request)
                 'register_session_id' => $session->id,
                 'staff_id' => auth()->id(),
                 'tenant_id' => $tenantId,
-                'mpesa_reference' => $request->payment_method === 'Mpesa' ? $request->mpesa_code : null,
+                'mpesa_code' => $request->payment_method === 'Mpesa' ? $request->mpesa_code : null,
                 'receipt_number' => $nextReceiptNumber,
             ]);
 

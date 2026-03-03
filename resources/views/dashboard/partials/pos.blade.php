@@ -163,7 +163,8 @@ $store = config('store');
 
             {{-- Mpesa Reference --}}
             <div id="mpesaRefDiv" class="hidden ml-2">
-                <input type="text" name="mpesa_reference" id="mpesaReference" placeholder="Mpesa Ref" class="rounded-lg border p-2">
+                <input type="text" name="mpesa_code" id="mpesaReference" placeholder="Mpesa Ref" class="rounded-lg border p-2" maxlength="10" >
+                <div id="mpesaError" class="text-red-600 text-sm mt-1 hidden"></div>
             </div>
 
             <button type="submit" class="px-10 py-4 bg-indigo-600 text-white rounded-xl text-lg font-bold hover:bg-indigo-700">

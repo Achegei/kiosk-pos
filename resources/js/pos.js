@@ -325,24 +325,39 @@ form.addEventListener('submit', async function(e){
         }
 
         /* ================= MPESA ================= */
-        if(method === "Mpesa") {
-            const result = await Swal.fire({
-                title: 'Enter Mpesa Confirmation Code',
-                input: 'text',
-                inputPlaceholder: 'Example: QWE123ABC',
-                confirmButtonText: 'Confirm Payment',
-                showCancelButton: true
-            });
+if(method === "Mpesa") {
+    const result = await Swal.fire({
+        title: 'Enter Mpesa Confirmation Code',
+        input: 'text',
+        inputPlaceholder: 'Example: QWE123ABC',
+        confirmButtonText: 'Confirm Payment',
+        showCancelButton: true,
 
-            if (!result.value) {
-                Swal.fire('Mpesa code required','','error');
-                checkoutPending = false;
-                return;
+        // 🔒 Prevent more than 10 characters
+        inputAttributes: {
+            maxlength: 10,
+            autocapitalize: 'characters'
+        },
+
+        // Optional: extra safety validation
+        inputValidator: (value) => {
+            if (!value) {
+                return 'Mpesa code is required';
             }
-
-            mpesaRef = result.value;   // <- capture here
-            cashGiven = subtotal;      // treat as fully paid
+            if (value.length > 10) {
+                return 'Mpesa code cannot exceed 10 characters';
+            }
         }
+    });
+
+    if (!result.value) {
+        checkoutPending = false;
+        return;
+    }
+
+    mpesaRef = result.value;
+    cashGiven = subtotal;
+}
 
         /* ================= CREDIT ================= */
         if(method==="Credit"){
