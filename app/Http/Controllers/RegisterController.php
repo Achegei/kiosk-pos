@@ -298,12 +298,12 @@ public function close(Request $request)
         }
     }
 
-    public function printEndOfDay($id)
+   public function printEndOfDay($id)
 {
     $tenantId = $this->tenantId();
 
-    $session = RegisterSession::where('tenant_id', $tenantId)
-        ->where('user_id', auth()->id()) //user owns this session
+    $session = \App\Models\RegisterSession::where('tenant_id', $tenantId)
+        ->where('user_id', auth()->id())
         ->where('status', 'closed')
         ->findOrFail($id);
 
@@ -311,7 +311,7 @@ public function close(Request $request)
     $tenant = \App\Models\Tenant::findOrFail($tenantId);
 
     // SALES
-    $sales = Transaction::where('tenant_id', $tenantId)
+    $sales = \App\Models\Transaction::where('tenant_id', $tenantId)
         ->where('register_session_id', $session->id)
         ->selectRaw("
             COALESCE(SUM(CASE WHEN payment_method='Cash' THEN total_amount END),0) cash,
@@ -320,8 +320,8 @@ public function close(Request $request)
         ")
         ->first();
 
-    // MOVEMENTS
-    $movements = CashMovement::where('tenant_id', $tenantId)
+    // TOTAL MOVEMENTS
+    $movements = \App\Models\CashMovement::where('tenant_id', $tenantId)
         ->where('register_session_id', $session->id)
         ->selectRaw("
             COALESCE(SUM(CASE WHEN type='drop' THEN amount END),0) drops,
@@ -332,6 +332,12 @@ public function close(Request $request)
         ")
         ->first();
 
+    // ALL individual movements for notes
+    $allMovements = \App\Models\CashMovement::where('tenant_id', $tenantId)
+        ->where('register_session_id', $session->id)
+        ->get();
+
+    // Expected cash calculation
     $expectedCash =
         $session->opening_cash
         + $sales->cash
@@ -343,18 +349,18 @@ public function close(Request $request)
 
     $difference = $session->closing_cash - $expectedCash;
 
-    $pdf = Pdf::loadView('reports.end_of_day', compact(
+    $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.end_of_day', compact(
         'tenant',
         'session',
         'sales',
         'movements',
+        'allMovements',
         'expectedCash',
         'difference'
     ))->setPaper([0, 0, 226, 900]); // 80mm
 
     return $pdf->stream("register-{$session->id}.pdf");
 }
-
 public function printLast()
 {
     // Get the latest closed register

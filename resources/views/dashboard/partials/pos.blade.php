@@ -298,6 +298,13 @@ $store = config('store');
                 <label class="block font-semibold mb-1">Amount</label>
                 <input type="number" name="amount" step="0.01" required class="w-full rounded-lg border p-2">
             </div>
+            <div class="mb-4">
+                <label class="block font-semibold mb-1">Note / Comment</label>
+                <textarea name="note"
+                          placeholder="Optional comment e.g. Paid John for milk supply"
+                          class="w-full rounded-lg border p-2"
+                          rows="2"></textarea>
+            </div>
             <div class="flex gap-2">
                 <button type="submit" class="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700">Save</button>
                 <button type="button" id="cancelCashMovement" class="flex-1 py-3 border border-gray-300 rounded-xl hover:bg-gray-100">Cancel</button>

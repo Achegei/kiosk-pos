@@ -38,6 +38,41 @@
         </div>
     </div>
 
+    {{-- ================= TENANT SEARCH ================= --}}
+<div class="bg-white rounded-xl shadow p-4 mt-6">
+    <form method="GET" action="{{ route('superadmin.dashboard') }}" class="flex flex-col sm:flex-row gap-3 sm:items-center">
+        
+        <div class="flex-1">
+            <input 
+                type="text" 
+                name="search" 
+                value="{{ request('search') }}"
+                placeholder="Search by tenant name or email..."
+                class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+        </div>
+
+        <div>
+            <button 
+                type="submit"
+                class="bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 transition"
+            >
+                Search
+            </button>
+        </div>
+
+        @if(request('search'))
+            <div>
+                <a href="{{ route('superadmin.dashboard') }}" 
+                   class="text-gray-500 hover:text-red-600 text-sm underline">
+                    Clear
+                </a>
+            </div>
+        @endif
+
+    </form>
+</div>
+
     {{-- ================= TENANTS TABLE ================= --}}
     <div class="bg-white rounded-xl shadow overflow-x-auto p-4 mt-6">
         <table class="w-full table-auto border-collapse text-sm text-gray-700 font-mono">

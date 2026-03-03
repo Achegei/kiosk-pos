@@ -228,8 +228,9 @@ document.addEventListener('DOMContentLoaded', function(){
             <tr>
                 <td>${p.name}</td>
                 <td>
-                    <input type="number" value="${p.qty}" min="1" class="border w-16 p-1"
-                        onchange="cart[${i}].qty=parseInt(this.value)||1; renderCart()">
+                    <input type="number" value="${p.qty}" min="1"
+                        data-index="${i}"
+                        class="border w-16 p-1 qty-input">
                 </td>
                 <td>${p.price.toFixed(2)}</td>
                 <td>${lineTotal.toFixed(2)}</td>
@@ -247,6 +248,13 @@ document.addEventListener('DOMContentLoaded', function(){
         const total = Math.max(subtotal + subtotal*tax/100 - discount, 0);
 
         tbody.innerHTML = html;
+        document.querySelectorAll('.qty-input').forEach(input => {
+            input.addEventListener('change', function(){
+                const index = this.dataset.index;
+                cart[index].qty = parseInt(this.value) || 1;
+                renderCart();
+            });
+        });
         document.getElementById('total').innerText = total.toFixed(2);
         document.getElementById('tax_input').value = tax;
         document.getElementById('discount_input').value = discount;
