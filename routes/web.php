@@ -209,6 +209,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/products/barcode/{barcode}', [ProductController::class, 'searchByBarcode'])->name('products.barcode');
     Route::get('/customers/search', [ProformaQuoteController::class, 'searchCustomers'])
     ->name('customers.search');
+    Route::post('/products/import',[ProductController::class, 'importProducts'])->name('products.import');
 
     // POS Product Search (not ProformaQuote)
     Route::get('/fetch/products', [ProductController::class, 'search'])

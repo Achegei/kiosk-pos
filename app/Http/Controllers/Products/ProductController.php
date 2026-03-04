@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Products;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Product;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Imports\ProductsImport;
+use App\Jobs\ImportProductsJob;
 
 class ProductController extends Controller
 {
@@ -137,6 +140,40 @@ class ProductController extends Controller
             }
         }
 
+    public function importProducts(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,csv'
+        ]);
+
+        try {
+            // Generate a unique filename
+            $filename = time().'_'.$request->file('file')->getClientOriginalName();
+
+            // Store file in storage/app/imports folder persistently
+            $request->file('file')->move(storage_path('app/imports'), $filename);
+
+            // Full path to pass to the job
+            $fullPath = storage_path('app/imports/' . $filename);
+
+            // Dispatch queued import
+            ImportProductsJob::dispatch($fullPath, auth()->user()->tenant_id);
+
+            return redirect()->route('products.index')
+                ->with('success', 'Products import has started. Large files may take a few minutes.');
+
+        } catch (\Throwable $e) {
+            \Log::channel('pos')->error('Product import failed', [
+                'tenant_id' => auth()->user()->tenant_id,
+                'user_id'   => auth()->id(),
+                'error'     => $e->getMessage(),
+                'trace'     => $e->getTraceAsString(),
+            ]);
+
+            return back()->with('error', 'Import failed. Please check file format.');
+        }
+    }
+    
  public function search(Request $request)
         {
             try {

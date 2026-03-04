@@ -29,7 +29,51 @@
             <p class="text-gray-500 mt-1">Create a new product to manage your inventory and POS sales.</p>
         </div>
 
-        <!-- Form Card -->
+        <!-- Flash Messages -->
+        @if (session('success'))
+            <div class="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg mb-6">
+                {{ session('success') }}
+            </div>
+        @endif
+
+        @if (session('error'))
+            <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg mb-6">
+                {{ session('error') }}
+            </div>
+        @endif
+
+        <!-- Import Products Card -->
+        <div class="bg-white shadow-lg rounded-lg p-8 border mb-8">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Import Products (Excel / CSV)</h3>
+            <p class="text-gray-500 mb-4 text-sm">
+                Upload a CSV or Excel file to bulk add or update products. Large files will be processed in the background.
+            </p>
+
+            <form action="{{ route('products.import') }}"
+                  method="POST"
+                  enctype="multipart/form-data"
+                  class="flex flex-col md:flex-row items-center gap-4">
+                @csrf
+
+                <input type="file"
+                       name="file"
+                       accept=".csv,.xlsx"
+                       required
+                       class="border border-gray-300 rounded-lg px-4 py-2 w-full md:w-auto">
+
+                <button type="submit"
+                        class="px-5 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition shadow">
+                    Import File
+                </button>
+
+                <a href="{{ asset('templates/products_import_template.csv') }}"
+                   class="text-blue-600 hover:underline text-sm">
+                    Download Template
+                </a>
+            </form>
+        </div>
+
+        <!-- Single Product Form Card -->
         <div class="bg-white shadow-lg rounded-lg p-8 border">
             @if ($errors->any())
                 <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg mb-6">
@@ -87,6 +131,7 @@
                 </div>
             </form>
         </div>
+
     </div>
 </div>
 @endsection
