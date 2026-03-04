@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Invoice; 
 use App\Models\InvoiceItem;
+use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\Customer; 
 use Illuminate\Support\Facades\DB;
@@ -117,15 +118,37 @@ class InvoiceController extends Controller
 
             $subtotal = 0;
             foreach ($request->items as $item) {
-                $product = Product::findOrFail($item['product_id']);
+
+                $product = Product::where('tenant_id', $tenant->id)
+                                ->findOrFail($item['product_id']);
+
                 $qty = (int) $item['qty'];
                 $lineTotal = $product->price * $qty;
 
+                // ✅ CHECK & LOCK INVENTORY
+                $inventory = Inventory::where('product_id', $product->id)
+                    ->where('tenant_id', $tenant->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$inventory) {
+                    throw new \Exception("No inventory record for {$product->name}");
+                }
+
+                if ($inventory->quantity < $qty) {
+                    throw new \Exception("Insufficient stock for {$product->name}");
+                }
+
+                // ✅ REDUCE STOCK
+                $inventory->quantity -= $qty;
+                $inventory->save();
+
+                // ✅ CREATE INVOICE ITEM
                 $invoice->items()->create([
                     'product_id' => $product->id,
-                    'quantity' => $qty,
-                    'price' => $product->price,
-                    'total' => $lineTotal,
+                    'quantity'   => $qty,
+                    'price'      => $product->price,
+                    'total'      => $lineTotal,
                 ]);
 
                 $subtotal += $lineTotal;
@@ -303,4 +326,80 @@ class InvoiceController extends Controller
             return back()->with('error','Failed to generate temporary invoice PDF.');
         }
     }
+
+    public function returnItem(Request $request, Invoice $invoice)
+{
+    // Only allow same tenant
+    abort_if($invoice->tenant_id !== auth()->user()->tenant_id, 403);
+
+    $request->validate([
+        'invoice_item_id' => 'required|exists:invoice_items,id',
+        'quantity' => 'required|integer|min:1',
+    ]);
+
+    DB::beginTransaction();
+
+    try {
+        // Lock the invoice item row
+        $invoiceItem = InvoiceItem::where('id', $request->invoice_item_id)
+            ->where('invoice_id', $invoice->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $qtyToReturn = (int) $request->quantity;
+
+        $remainingReturnable = $invoiceItem->quantity - $invoiceItem->returned_quantity;
+
+        if ($qtyToReturn > $remainingReturnable) {
+            throw new \Exception("Return quantity cannot exceed remaining sold quantity ($remainingReturnable).");
+        }
+
+        // Lock inventory row
+        $inventory = Inventory::where('product_id', $invoiceItem->product_id)
+            ->where('tenant_id', $invoice->tenant_id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        // Increase inventory stock
+        $inventory->quantity += $qtyToReturn;
+        $inventory->save();
+
+        // Update returned quantity on invoice item
+        $invoiceItem->returned_quantity += $qtyToReturn;
+        $invoiceItem->save();
+
+        // Recalculate invoice totals
+        $invoice->load('items');
+
+        $subtotal = 0;
+        foreach ($invoice->items as $item) {
+            $effectiveQty = max(0, $item->quantity - $item->returned_quantity);
+            $subtotal += $effectiveQty * $item->price;
+        }
+
+        $taxAmount = ($subtotal * ($invoice->tax_percent ?? 0)) / 100;
+        $newTotal = max($subtotal + $taxAmount - ($invoice->discount ?? 0), 0);
+
+        $invoice->total_amount = $newTotal;
+
+        // Update invoice status
+        if ($newTotal == 0) {
+            $invoice->status = 'Returned';
+        } elseif ($invoice->status === 'Paid') {
+            $invoice->status = 'Adjusted';
+        } elseif ($invoice->status === 'Pending' && $newTotal > 0) {
+            $invoice->status = 'Pending';
+        }
+
+        $invoice->save();
+
+        DB::commit();
+
+        return back()->with('success', "Returned $qtyToReturn item(s) & invoice updated successfully.");
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return back()->with('error', $e->getMessage());
+    }
+}
 }

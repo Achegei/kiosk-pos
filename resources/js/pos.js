@@ -324,40 +324,40 @@ form.addEventListener('submit', async function(e){
             }
         }
 
-        /* ================= MPESA ================= */
-if(method === "Mpesa") {
-    const result = await Swal.fire({
-        title: 'Enter Mpesa Confirmation Code',
-        input: 'text',
-        inputPlaceholder: 'Example: QWE123ABC',
-        confirmButtonText: 'Confirm Payment',
-        showCancelButton: true,
+                /* ================= MPESA ================= */
+        if(method === "Mpesa") {
+            const result = await Swal.fire({
+                title: 'Enter Mpesa Confirmation Code',
+                input: 'text',
+                inputPlaceholder: 'Example: QWE123ABC',
+                confirmButtonText: 'Confirm Payment',
+                showCancelButton: true,
 
-        // 🔒 Prevent more than 10 characters
-        inputAttributes: {
-            maxlength: 10,
-            autocapitalize: 'characters'
-        },
+                // 🔒 Prevent more than 10 characters
+                inputAttributes: {
+                    maxlength: 10,
+                    autocapitalize: 'characters'
+                },
 
-        // Optional: extra safety validation
-        inputValidator: (value) => {
-            if (!value) {
-                return 'Mpesa code is required';
+                // Optional: extra safety validation
+                inputValidator: (value) => {
+                    if (!value) {
+                        return 'Mpesa code is required';
+                    }
+                    if (value.length > 10) {
+                        return 'Mpesa code cannot exceed 10 characters';
+                    }
+                }
+            });
+
+            if (!result.value) {
+                checkoutPending = false;
+                return;
             }
-            if (value.length > 10) {
-                return 'Mpesa code cannot exceed 10 characters';
-            }
+
+            mpesaRef = result.value;
+            cashGiven = subtotal;
         }
-    });
-
-    if (!result.value) {
-        checkoutPending = false;
-        return;
-    }
-
-    mpesaRef = result.value;
-    cashGiven = subtotal;
-}
 
         /* ================= CREDIT ================= */
         if(method==="Credit"){

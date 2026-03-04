@@ -1,4 +1,5 @@
 @extends('layouts.admin')
+
 @section('title','Invoice #'.($invoice->invoice_number ? 'INV-'.str_pad($invoice->invoice_number,5,'0',STR_PAD_LEFT) : 'INV-'.$invoice->id))
 
 @section('content')
@@ -58,22 +59,44 @@
             <tr class="border-b bg-gray-100">
                 <th class="text-left p-2">Product</th>
                 <th class="text-center p-2">Qty</th>
+                <th class="text-center p-2">Returned</th>
                 <th class="text-right p-2">Price</th>
                 <th class="text-right p-2">Total</th>
+                <th class="text-center p-2">Return</th>
             </tr>
         </thead>
         <tbody>
             @php $subtotal = 0; @endphp
             @foreach($invoice->items as $item)
                 @php
-                    $lineTotal = ($item->quantity ?? 0) * ($item->price ?? 0);
+                    $lineTotal = (($item->quantity ?? 0) - ($item->returned_quantity ?? 0)) * ($item->price ?? 0);
                     $subtotal += $lineTotal;
+                    $remaining = ($item->quantity ?? 0) - ($item->returned_quantity ?? 0);
                 @endphp
                 <tr class="border-b">
                     <td class="p-2">{{ $item->product?->name ?? 'Deleted Product' }}</td>
                     <td class="text-center p-2">{{ $item->quantity ?? 0 }}</td>
+                    <td class="text-center p-2">{{ $item->returned_quantity ?? 0 }}</td>
                     <td class="text-right p-2">KES {{ number_format($item->price ?? 0, 2) }}</td>
                     <td class="text-right p-2">KES {{ number_format($lineTotal, 2) }}</td>
+                    <td class="text-center p-2">
+                        @if($remaining > 0)
+                            <form action="{{ route('invoices.returnItem', $invoice->id) }}" method="POST" class="inline-flex gap-1 items-center">
+                                @csrf
+                                <input type="hidden" name="invoice_item_id" value="{{ $item->id }}">
+                                <select name="quantity" class="border rounded px-1 text-sm" required>
+                                    @for($i = 1; $i <= $remaining; $i++)
+                                        <option value="{{ $i }}">{{ $i }}</option>
+                                    @endfor
+                                </select>
+                                <button type="submit" class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">
+                                    Return
+                                </button>
+                            </form>
+                        @else
+                            <span class="text-gray-400 text-xs">None</span>
+                        @endif
+                    </td>
                 </tr>
             @endforeach
         </tbody>

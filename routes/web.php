@@ -233,6 +233,7 @@ Route::middleware('auth')->group(function () {
         // Proforma Quotes
         Route::post('quotes/{quote}/convert', [ProformaQuoteController::class, 'convert'])->name('quotes.convert');
         Route::resource('invoices', \App\Http\Controllers\Admin\Invoices\InvoiceController::class);
+        Route::post('/invoices/{invoice}/return-item', [InvoiceController::class, 'returnItem'])->name('invoices.returnItem');
     });
 
     // Quick add customer from POS

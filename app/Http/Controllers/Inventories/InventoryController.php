@@ -39,8 +39,8 @@ class InventoryController extends Controller
             }
         }
 
-public function create()
-    {
+    public function create()
+        {
         try {
             $products = Product::where('tenant_id', auth()->user()->tenant_id)
                 ->whereDoesntHave('inventory')
