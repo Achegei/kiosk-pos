@@ -4,6 +4,9 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Transactions\TransactionController;
 use App\Http\Controllers\Products\ProductController;
 use App\Http\Controllers\OfflineSaleController;
+use App\Http\Controllers\Webhooks\IntaSendController;
+
+
 
 /*
 |--------------------------------------------------------------------------
@@ -14,7 +17,6 @@ use App\Http\Controllers\OfflineSaleController;
 | Includes product search, barcode lookup, POS checkout, and offline sync.
 |
 */
-
 Route::middleware(['auth'])->group(function () {
 
     // 🔎 SEARCH PRODUCTS
@@ -29,3 +31,5 @@ Route::middleware(['auth'])->group(function () {
     // 🔄 OFFLINE SALES SYNC
     Route::post('offline-sync', [OfflineSaleController::class, 'sync']);
 });
+
+Route::post('/webhooks/intasend', [IntaSendController::class, 'handle']);

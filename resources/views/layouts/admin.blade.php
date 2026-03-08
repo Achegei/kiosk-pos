@@ -71,6 +71,23 @@
             <a href="{{ route('invoices.index') }}" class="flex px-6 py-3 hover:bg-gray-100">
                 🧾 Invoices
             </a>
+            {{-- Procurement --}}
+            <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">
+                Procurement
+            </div>
+
+            <a href="{{ route('purchase_orders.index') }}"
+            class="flex px-6 py-3 hover:bg-gray-100 items-center space-x-2">
+                <span>🛒</span>
+                <span>Purchase Orders</span>
+            </a>
+
+            <a href="{{ route('admin.suppliers.index') }}"
+            class="flex px-6 py-3 hover:bg-gray-100 items-center space-x-2">
+                <span>🚚</span>
+                <span>Suppliers</span>
+            </a>
+            
             @if(auth()->user()->tenant)
             <a href="{{ route('admin.tenants.export', auth()->user()->tenant->id) }}"
             class="flex px-6 py-3 hover:bg-gray-100">
@@ -116,8 +133,64 @@
 
 
     <!-- 🔥 STICKY TOPBAR -->
-    <header class="bg-white shadow px-6 py-4 flex justify-between items-center
-                   sticky top-0 z-30">
+    <header class="bg-white shadow px-6 py-4 flex justify-between items-center sticky top-0 z-30">
+
+    <h1 class="text-lg font-semibold text-gray-700">
+        @yield('page-title','Dashboard')
+    </h1>
+
+    <div class="flex items-center space-x-4">
+
+        {{-- SHOW ONLY FOR TENANT USERS --}}
+        @if(!auth()->user()->isSuperAdmin() && auth()->user()->tenant)
+
+            @php
+                $tenant = auth()->user()->tenant;
+                $daysLeft = $tenant->expiry_date
+                    ? now()->diffInDays($tenant->expiry_date, false)
+                    : null;
+            @endphp
+
+            {{-- ACTIVE OR TRIAL --}}
+            @if($tenant->subscription_status === 'active' || $tenant->subscription_status === 'trial')
+
+                <div class="text-sm text-gray-600">
+                    Plan expires:
+                    <span class="font-semibold">
+                        {{ $tenant->expiry_date ? $tenant->expiry_date->format('d M Y') : 'N/A' }}
+                    </span>
+                </div>
+
+                @if($daysLeft !== null && $daysLeft <= 5)
+                    <form method="POST" action="{{ route('tenant.paySaaS') }}">
+                        @csrf
+                        <button class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 text-sm">
+                            Pay Subscription
+                        </button>
+                    </form>
+                @endif
+
+            {{-- SUSPENDED --}}
+            @elseif($tenant->subscription_status === 'suspended')
+
+                <form method="POST" action="{{ route('tenant.paySaaS') }}">
+                    @csrf
+                    <button class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm">
+                        Account Suspended — Pay Now
+                    </button>
+                </form>
+
+            @endif
+
+        @endif
+
+        <div class="text-sm text-gray-500">
+            {{ now()->format('l, d M Y') }}
+        </div>
+
+    </div>
+
+</header>
 
         <h1 class="text-lg font-semibold text-gray-700">
             @yield('page-title','Dashboard')

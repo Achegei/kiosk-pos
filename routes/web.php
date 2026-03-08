@@ -18,6 +18,10 @@ use App\Http\Controllers\Inventories\InventoryController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\ProformaQuotes\ProformaQuoteController;
 use App\Http\Controllers\Admin\Invoices\InvoiceController;
+use App\Http\Controllers\Admin\PurchaseOrder\PurchaseOrderController;
+use App\Http\Controllers\Admin\SupplierController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\BillingController;
 
 
 
@@ -34,6 +38,12 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+Route::get('/billing/payment-status/{apiRef}', function ($apiRef) {
+    $payment = \App\Models\Payment::where('api_ref', $apiRef)->first();
+    return response()->json([
+        'status' => $payment?->status ?? 'pending'
+    ]);
+});
 /*
 |--------------------------------------------------------------------------
 | GUEST ROUTES (NOT LOGGED IN)
@@ -79,12 +89,58 @@ Route::prefix('admin/tenants/settings')->middleware(['web', 'auth'])->group(func
     Route::post('/notes', [TenantsSettingsController::class, 'updateDefaultNotes'])
         ->name('tenant.settings.default_notes.update');
 });
+
+// Billing page route
+
+Route::middleware('auth')->group(function () {
+
+    Route::get('/billing', [BillingController::class,'index'])->name('billing');
+    Route::get('/billing/success', [PaymentController::class, 'success'])->name('billing.success');
+
+}); 
+
+
+// Payment route for SaaS subscription (redirects to IntaSend checkout)
+Route::middleware(['auth'])->group(function () {
+
+Route::post('/tenant/pay-saas', [PaymentController::class, 'paySaaS'])->name('tenant.paySaaS');});
+
+/*
+|--------------------------------------------------------------------------
+| SUPPLIER MANAGEMENT (ADMIN ONLY)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () {
+
+        Route::resource('suppliers', SupplierController::class);
+
+    });
+
+/*
+|--------------------------------------------------------------------------
+| PURCHASE ORDERS (ADMIN ONLY)
+|--------------------------------------------------------------------------
+*/
+    Route::prefix('admin/purchase-orders')->middleware(['auth','tenant.subscription'])->name('purchase_orders.')->group(function () {
+        Route::get('/', [PurchaseOrderController::class, 'index'])->name('index');
+        Route::get('/create', [PurchaseOrderController::class, 'create'])->name('create');
+        Route::post('/', [PurchaseOrderController::class, 'store'])->name('store');
+        Route::get('/{purchaseOrder}/edit', [PurchaseOrderController::class, 'edit'])->name('edit');
+        Route::put('/{purchaseOrder}', [PurchaseOrderController::class, 'update'])->name('update');
+        Route::delete('/{purchaseOrder}', [PurchaseOrderController::class, 'destroy'])->name('destroy');
+        Route::get('/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->name('show');
+
+        // Receive stock
+        Route::post('/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive'])->name('receive');
+
+        Route::post('/{purchaseOrder}/adjust-received', [PurchaseOrderController::class, 'adjustReceived'])->name('adjust_received');
+    });
 /*
 |--------------------------------------------------------------------------
 | AUTHENTICATED ROUTES
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'tenant.subscription'])->group(function () {
     Route::patch('admin/invoices/{invoice}/status', [InvoiceController::class, 'updateStatus'])->name('invoices.updateStatus');
     Route::get('admin/invoices/{invoice}/pdf', [InvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
     Route::get('/quotes/{quote}/pdf', [ProformaQuoteController::class, 'downloadPdf'])
@@ -204,7 +260,7 @@ Route::middleware('auth')->group(function () {
     | LIVE SEARCH ROUTES (AJAX)
     |--------------------------------------------------------------------------
     */
-    Route::middleware(['auth'])->group(function() {
+    Route::middleware(['auth', 'tenant.subscription'])->group(function() {
     Route::get('/products/search', [ProformaQuoteController::class, 'searchProducts']);
     Route::get('/products/barcode/{barcode}', [ProductController::class, 'searchByBarcode'])->name('products.barcode');
     Route::get('/customers/search', [ProformaQuoteController::class, 'searchCustomers'])

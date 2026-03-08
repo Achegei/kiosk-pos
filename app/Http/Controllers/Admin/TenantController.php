@@ -80,6 +80,8 @@ class TenantController extends Controller
                 'expiry_date'         => $data['expiry_date'] ?? null,
             ]);
 
+            $tenant->startTrial(1); // 1 month free trial
+            
             // Handle logo upload
             if ($request->hasFile('logo')) {
                 $tenant->logo = $request->file('logo')->store('tenants/logos', 'public');
