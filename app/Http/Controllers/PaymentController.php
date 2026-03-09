@@ -33,9 +33,30 @@ class PaymentController extends Controller
         // Clean tenant name for IntaSend
         $sanitize = fn($str) => substr(preg_replace('/[^A-Za-z0-9 _-]/', '', $str), 0, 50);
 
+        $phone = preg_replace('/[^0-9]/', '', $tenant->phone); // remove any non-digits
+
+        if (str_starts_with($phone, '07') && strlen($phone) === 10) {
+            // mobile number
+            $phone = '254' . substr($phone, 1);
+        } elseif (str_starts_with($phone, '01') && strlen($phone) === 10) {
+            // landline number
+            $phone = '254' . substr($phone, 1);
+        } elseif (str_starts_with($phone, '254') && strlen($phone) === 12) {
+            // already in international format
+            // do nothing
+        } else {
+            // fallback: unknown format, use empty or default
+            $phone = '';
+        }
+
         $customer = new Customer();
-        $customer->first_name = $sanitize($tenant->name);
-        $customer->last_name  = $sanitize($tenant->name);
+        $nameParts = explode(' ', $tenant->name);
+
+        $firstName = $nameParts[0] ?? 'Customer';
+        $lastName  = $nameParts[1] ?? 'User';
+
+        $customer->first_name = substr($firstName, 0, 25);
+        $customer->last_name  = substr($lastName, 0, 25);
         $customer->email      = $tenant->email;
         $customer->country    = "KE";
         $customer->phone      = $tenant->phone ?? '';
