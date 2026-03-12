@@ -44,22 +44,3 @@
         </div>
     </div>
 </div>
-
-{{-- ================= DEBUG PANEL ================= --}}
-<div class="mt-6 bg-gray-50 border border-gray-200 p-4 rounded-xl text-sm sm:text-base font-mono">
-    <h3 class="text-gray-700 font-semibold mb-2">Debug Info</h3>
-    <p><span class="font-medium">Open Register IDs:</span> {{ $openRegister ? $openRegister->id : 'None' }}</p>
-    <p><span class="font-medium">All Open Register IDs:</span> {{ implode(', ', $openRegisters->pluck('id')->toArray()) ?: 'None' }}</p>
-    <p><span class="font-medium">Cash Movements:</span></p>
-    <ul class="ml-4 list-disc">
-        <li>Drops: KES {{ number_format($drops ?? 0, 2) }}</li>
-        <li>Expenses: KES {{ number_format($expenses ?? 0, 2) }}</li>
-        <li>Payouts: KES {{ number_format($payouts ?? 0, 2) }}</li>
-        <li>Deposits: KES {{ number_format($deposits ?? 0, 2) }}</li>
-        <li>Adjustments: KES {{ number_format($adjustments ?? 0, 2) }}</li>
-    </ul>
-    <p>
-        <span class="font-medium">Money In:</span> KES {{ number_format($moneyIn ?? 0, 2) }} | 
-        <span class="font-medium">Money Out:</span> KES {{ number_format($moneyOut ?? 0, 2) }}
-    </p>
-</div>
