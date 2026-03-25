@@ -237,4 +237,18 @@ class AuthController extends Controller
             return back()->withErrors('Unable to reset password. Please try again later.');
         }
     }
+    public function adminResetPassword(Request $request)
+        {
+            $request->validate([
+                'password' => 'required|string|min:8|confirmed',
+            ]);
+
+            $user = auth()->user();
+            $user->password = bcrypt($request->password);
+            $user->must_reset_password = false;
+            $user->save();
+
+            return redirect()->route('dashboard')
+                ->with('success', 'Password updated successfully!');
+        }
 }

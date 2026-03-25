@@ -231,6 +231,21 @@ Route::middleware(['auth', 'tenant.subscription'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     /*
+    |-------------------------------------------------------------------------
+    |Must Reset Password
+    |-------------------------------------------------------------------------
+    */
+
+            Route::middleware('auth')->group(function () {
+
+    Route::get('/admin/reset-password', function () {
+        return view('auth.admin-reset-password');
+    })->name('admin.reset-password');
+
+    Route::post('/admin/reset-password', [AuthController::class, 'adminResetPassword']);
+
+});
+    /*
     |--------------------------------------------------------------------------
     | DASHBOARD (ALL ROLES)
     |--------------------------------------------------------------------------
