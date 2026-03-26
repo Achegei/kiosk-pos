@@ -51,9 +51,12 @@
                 <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">Procurement</div>
                 <a href="{{ route('purchase_orders.index') }}" class="flex px-6 py-3 hover:bg-gray-100 items-center space-x-2"><span>🛒</span><span>Purchase Orders</span></a>
                 <a href="{{ route('admin.suppliers.index') }}" class="flex px-6 py-3 hover:bg-gray-100 items-center space-x-2"><span>🚚</span><span>Suppliers</span></a>
-                @if(auth()->user()->tenant)
-                <a href="{{ route('admin.tenants.export', auth()->user()->tenant->id) }}" class="flex px-6 py-3 hover:bg-gray-100">📥 Export Data</a>
-                @endif
+                <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">Reports & Exports</div>
+
+                <!-- Low Stock Export -->
+                <a href="{{ route('reports.low_stock', ['format' => 'excel']) }}" class="flex px-6 py-3 hover:bg-gray-100">📊 Low Stock Excel</a>
+                <!-- Daily Sales Report -->
+                <a href="{{ route('reports.daily_sales') }}" class="flex px-6 py-3 hover:bg-gray-100">💰 Daily Sales</a>
                 @if(auth()->user()->isAdmin())
                 <div class="px-6 mt-6 text-xs font-semibold text-gray-400 uppercase">Administration</div>
                 <a href="{{ route('tenants.settings.notes') }}" class="flex px-6 py-3 hover:bg-gray-100">📝 Default Quote Notes</a>

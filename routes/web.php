@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\BillingController;
+use App\Http\Controllers\Admin\Reports\ReportsController;
 
 
 
@@ -147,6 +148,33 @@ Route::middleware(['auth', 'tenant.subscription'])->group(function () {
     ->name('quotes.pdf');
     Route::post('admin/invoices/pdf-preview', [InvoiceController::class, 'generatePdf'])->name('invoices.pdf.preview');
 
+
+/*
+|--------------------------------------------------------------------------
+|BATCHES
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('reports')->middleware(['auth', 'tenant.subscription'])->group(function() {
+
+    // LOW STOCK
+    Route::get('/low-stock', [ReportsController::class, 'lowStockPreview'])
+        ->name('reports.low_stock'); // opens Blade preview
+    Route::get('/low-stock/{format}', [ReportsController::class, 'lowStockExport'])
+        ->name('reports.low_stock_export'); // exports Excel/CSV/PDF
+
+    // RECENT TRANSACTIONS
+    //Route::get('/recent-transactions', [ReportsController::class, 'recentTransactions'])
+        //->name('reports.recent_transactions'); // opens Blade preview
+    //Route::get('/recent-transactions/{format}', [ReportsController::class, 'recentTransactionsExport'])
+        //->name('reports.recent_transactions_export'); // exports
+
+    // DAILY SALES
+    Route::get('/daily-sales', [ReportsController::class, 'dailySales'])
+        ->name('reports.daily_sales'); // opens Blade preview
+    Route::get('/daily-sales/{format}', [ReportsController::class, 'dailySalesExport'])
+        ->name('reports.daily_sales_export'); // exports
+});
     /*
 |--------------------------------------------------------------------------
 | TENANT MANAGEMENT (SUPER ADMIN ONLY)
