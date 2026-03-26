@@ -220,4 +220,44 @@ class CustomerController extends Controller
                 return back()->withErrors('Unable to delete customer. Please try again.');
             }
         }
+
+        public function payCredit(Request $request, Customer $customer)
+{
+    $request->validate([
+        'amount' => 'required|numeric|min:1',
+        'method' => 'required|string',
+        'reference' => 'nullable|string'
+    ]);
+
+    if ($customer->tenant_id !== auth()->user()->tenant_id) {
+        abort(403);
+    }
+
+    if ($customer->credit <= 0) {
+        return response()->json(['message' => 'Customer has no debt'], 400);
+    }
+
+    $amount = min($request->amount, $customer->credit); // prevent overpayment
+
+    \DB::transaction(function () use ($customer, $amount, $request) {
+
+        // Save payment record
+        \App\Models\CustomerPayment::create([
+        'customer_id' => $customer->id,
+        'amount' => $amount,
+        'method' => $request->method,
+        'reference' => $request->reference,
+        'tenant_id' => auth()->user()->tenant_id,
+        'register_session_id' => auth()->user()->openRegister?->id
+    ]);
+
+        // Reduce customer debt
+        $customer->decrement('credit', $amount);
+    });
+
+    return response()->json([
+        'success' => true,
+        'new_balance' => $customer->fresh()->credit
+    ]);
+}
 }

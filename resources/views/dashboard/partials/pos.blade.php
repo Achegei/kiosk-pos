@@ -89,27 +89,42 @@ $store = config('store');
         </div>
 
         {{-- Customer Selection --}}
-        <div class="mb-4">
-            <label class="font-semibold block mb-1">Customer</label>
-            <div class="flex gap-2">
-                <select id="customer" name="customer_id" class="w-full rounded-lg border-gray-300 shadow-sm">
-                    <option value="" selected>Walk-in Customer</option>
-                    @foreach($customers ?? [] as $customer)
-                        <option value="{{ $customer->id }}">
-                            {{ $customer->name }}
-                            @if($customer->phone) ({{ $customer->phone }}) @endif
-                        </option>
-                    @endforeach
-                </select>
-                {{-- Live Credit Display --}}
-                <div id="customerCreditDiv" class="mt-2 text-sm text-gray-600 hidden">
-                    Previous Credit: KES <span id="customerCredit">0.00</span>
-                </div>
-                <button type="button" id="newCustomerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-lg shadow">
-                    + New
-                </button>
-            </div>
-        </div>
+<div class="mb-4">
+    <label class="font-semibold block mb-1">Customer</label>
+
+    {{-- Row: Select + Buttons --}}
+    <div class="flex gap-2 items-center">
+
+        <select id="customer" name="customer_id"
+            class="w-full rounded-lg border-gray-300 shadow-sm">
+            <option value="">Walk-in Customer</option>
+            @foreach($customers ?? [] as $customer)
+                <option value="{{ $customer->id }}"
+                        data-credit="{{ $customer->credit }}">
+                    {{ $customer->name }}
+                    @if($customer->phone) ({{ $customer->phone }}) @endif
+                </option>
+            @endforeach
+        </select>
+
+        {{-- 💰 Receive Payment Button --}}
+        <button type="button" id="payCreditBtn"
+            class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded hidden whitespace-nowrap">
+            💰 Receive
+        </button>
+
+        {{-- ➕ New Customer --}}
+        <button type="button" id="newCustomerBtn"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow whitespace-nowrap">
+            + New
+        </button>
+    </div>
+
+    {{-- Credit Display (Below row) --}}
+    <div id="customerCreditDiv" class="mt-2 text-sm text-gray-600 hidden">
+        Previous Credit: KES <span id="customerCredit">0.00</span>
+    </div>
+</div>
 
         {{-- Cart Table --}}
         <div class="overflow-x-auto mb-4 flex-1">
@@ -205,6 +220,14 @@ $store = config('store');
 @if($openRegister && $openRegister->status === 'open')
 @php
     $cashSales = $openRegister->transactions()->where('payment_method','Cash')->sum('total_amount');
+    
+    // Cash received for credit invoices (sum of all cash payments against credit)
+    $cashFromCreditPayments = \DB::table('customer_payments')
+    ->where('register_session_id', $openRegister->id) // your current register session
+    ->where('tenant_id', $openRegister->tenant_id)
+    ->where('method', 'Cash') // or Mpesa if you track that too
+    ->sum('amount');
+
     $mpesaSales = $openRegister->transactions()->where('payment_method','Mpesa')->sum('total_amount');
     $creditSales = $openRegister->transactions()->where('payment_method','Credit')->sum('total_amount');
 
@@ -218,7 +241,8 @@ $store = config('store');
     $deposits    = $movements->where('type','deposit')->sum('amount');
     $adjustments = $movements->where('type','adjustment')->sum('amount');
 
-    $expectedCash = $openRegister->opening_cash + $cashSales - $drops - $expenses - $payouts + $deposits + $adjustments;
+    //$expectedCash = $openRegister->opening_cash + $cashSales - $drops - $expenses - $payouts + $deposits + $adjustments;
+    $expectedCash = $openRegister->opening_cash + $cashSales + $cashFromCreditPayments - $drops - $expenses - $payouts + $deposits + $adjustments;
 @endphp
 
 <div id="closeRegisterModal" class="hidden fixed inset-0 bg-gray-100 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300">
@@ -235,6 +259,7 @@ $store = config('store');
 
             {{-- Sales --}}
             <div class="mb-2">Cash Sales: KES <span id="cashTotal">{{ number_format($cashSales,2) }}</span></div>
+            <div class="mb-2">Cash from Credit Payments: KES <span id="cashFromCredit">{{ number_format($cashFromCreditPayments,2) }}</span></div>
             <div class="mb-2">Mpesa Sales: KES <span id="mpesaTotal">{{ number_format($mpesaSales,2) }}</span></div>
             <div class="mb-2 font-bold">Total Cash + Mpesa: KES <span id="totalCashMpesa">{{ number_format($cashSales + $mpesaSales,2) }}</span></div>
             <div class="mb-2 font-bold">Grand Total (Opening + Cash + Mpesa): KES <span id="grandTotalCash">{{ number_format($openRegister->opening_cash + $cashSales + $mpesaSales,2) }}</span></div>
@@ -311,6 +336,32 @@ $store = config('store');
                 <button type="button" id="cancelCashMovement" class="flex-1 py-3 border border-gray-300 rounded-xl hover:bg-gray-100">Cancel</button>
             </div>
         </form>
+    </div>
+</div>
+
+
+<!--Debt repayment-->
+<div id="creditPaymentModal" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-xl w-full max-w-md">
+        <h2 class="text-lg font-bold mb-4">Receive Credit Payment</h2>
+
+        <input type="number" id="creditAmount" placeholder="Amount" class="w-full border p-2 mb-3 rounded">
+
+        <select id="creditMethod" class="w-full border p-2 mb-3 rounded">
+            <option value="Cash">Cash</option>
+            <option value="Mpesa">Mpesa</option>
+        </select>
+
+        <input type="text" id="creditReference" placeholder="Mpesa Ref (optional)" class="w-full border p-2 mb-3 rounded">
+
+        <div class="flex gap-2">
+            <button id="submitCreditPayment" class="bg-indigo-600 text-white px-4 py-2 rounded w-full">
+                Submit
+            </button>
+            <button id="closeCreditModal" class="border px-4 py-2 rounded w-full">
+                Cancel
+            </button>
+        </div>
     </div>
 </div>
 
@@ -486,7 +537,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
         creditCustomers: totals.creditCustomers || [],
     };
 
-    combined.expectedCash = combined.openingCash + combined.cash - combined.drops - combined.expenses - combined.payouts + combined.deposits + combined.adjustments;
+    const cashFromCredit = parseFloat(totals.cashFromCredit || 0);
+    combined.expectedCash = combined.openingCash + combined.cash + cashFromCredit - combined.drops - combined.expenses - combined.payouts + combined.deposits + combined.adjustments;
     combined.expectedMpesa = combined.mpesa;
     combined.totalCashMpesa = combined.cash + combined.mpesa;
 
@@ -499,6 +551,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     document.getElementById('payoutTotal').textContent = combined.payouts.toFixed(2);
     document.getElementById('depositTotal').textContent = combined.deposits.toFixed(2);
     document.getElementById('adjustTotal').textContent = combined.adjustments.toFixed(2);
+    document.getElementById('cashFromCredit').textContent = cashFromCredit.toFixed(2);
     document.getElementById('expectedCash').textContent = combined.expectedCash.toFixed(2);
     document.getElementById('totalCashMpesa').textContent = combined.totalCashMpesa.toFixed(2);
     document.getElementById('grandTotalCash').textContent = (combined.openingCash + combined.totalCashMpesa).toFixed(2);
@@ -604,6 +657,112 @@ document.getElementById('closeRegisterForm')?.addEventListener('submit', async f
             console.error('Refresh failed', err);
         }
     }
+
+    //Debt repayment Modal
+    let selectedCustomerId = null;
+
+// Detect customer selection
+document.getElementById('customer')?.addEventListener('change', function () {
+    selectedCustomerId = this.value;
+
+    if (selectedCustomerId) {
+        document.getElementById('payCreditBtn').classList.remove('hidden');
+    } else {
+        document.getElementById('payCreditBtn').classList.add('hidden');
+    }
+});
+
+// Open modal
+document.getElementById('payCreditBtn')?.addEventListener('click', () => {
+    document.getElementById('creditPaymentModal').classList.remove('hidden');
+});
+
+// Close modal
+document.getElementById('closeCreditModal')?.addEventListener('click', () => {
+    document.getElementById('creditPaymentModal').classList.add('hidden');
+});
+
+// Submit payment
+document.getElementById('submitCreditPayment')?.addEventListener('click', async () => {
+    const amountInput = document.getElementById('creditAmount');
+    const method = document.getElementById('creditMethod').value;
+    const reference = document.getElementById('creditReference').value;
+
+    // Parse amount as float
+    const amount = parseFloat(amountInput.value);
+    if (!amount || amount <= 0) {
+        alert('Enter a valid amount');
+        return;
+    }
+
+    // Get current balance from UI
+    const balanceText = document.getElementById('customerCredit').innerText;
+    const balance = parseFloat(balanceText);
+
+    // Check for overpayment
+    if (amount > balance) {
+        alert(`Payment exceeds current balance of KES ${balance.toFixed(2)}`);
+        return;
+    }
+
+    try {
+        const res = await fetch(`/customers/${selectedCustomerId}/pay-credit`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            },
+            body: new URLSearchParams({
+                amount,
+                method,
+                reference
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            alert('Payment received!');
+
+            // Close modal
+            document.getElementById('creditPaymentModal').classList.add('hidden');
+
+            // Reset input
+            amountInput.value = '';
+            document.getElementById('creditReference').value = '';
+
+            // Update UI with new balance
+            document.getElementById('customerCredit').innerText = parseFloat(data.new_balance).toFixed(2);
+        } else {
+            alert(data.message || 'Payment failed');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('An error occurred while processing payment');
+    }
+});
+
+    //paying debt
+    document.getElementById('customer')?.addEventListener('change', function () {
+    const selectedOption = this.options[this.selectedIndex];
+    const credit = selectedOption.getAttribute('data-credit') || 0;
+
+    const creditDiv = document.getElementById('customerCreditDiv');
+    const creditText = document.getElementById('customerCredit');
+    const payBtn = document.getElementById('payCreditBtn');
+
+    if (this.value) {
+        // Show credit + button
+        creditDiv.classList.remove('hidden');
+        payBtn.classList.remove('hidden');
+
+        creditText.innerText = parseFloat(credit).toFixed(2);
+    } else {
+        // Hide for walk-in
+        creditDiv.classList.add('hidden');
+        payBtn.classList.add('hidden');
+    }
+});
     
     
     

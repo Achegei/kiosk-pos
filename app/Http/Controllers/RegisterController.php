@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use App\Models\CashMovement;
 use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Models\CustomerPayment;
 
 class RegisterController extends Controller
 {
@@ -202,6 +203,11 @@ public function close(Request $request)
                     SUM(CASE WHEN payment_method='Credit' THEN total_amount ELSE 0 END) credit
                 ")->first();
 
+                $cashFromCreditPayments = \DB::table('customer_payments')
+                ->where('register_session_id', $session->id)
+                ->where('method','Cash')
+                ->sum('amount');
+
             $movements = CashMovement::where('tenant_id', $tenant)
                 ->where('register_session_id', $id)
                 ->selectRaw("
@@ -217,6 +223,7 @@ public function close(Request $request)
                 'cash' => $sales->cash ?? 0,
                 'mpesa' => $sales->mpesa ?? 0,
                 'credit' => $sales->credit ?? 0,
+                'cashFromCredit' => $cashFromCreditPayments ?? 0,
                 'drops' => $movements->drops ?? 0,
                 'expenses' => $movements->expenses ?? 0,
                 'payouts' => $movements->payouts ?? 0,
@@ -320,6 +327,17 @@ public function close(Request $request)
         ")
         ->first();
 
+        $cashDebtPayments = \DB::table('customer_payments')
+        ->where('register_session_id', $session->id)
+        ->where('method','Cash')  // Or Mpesa if you track Mpesa payments as debt payments
+        ->sum('amount');
+
+                // MPESA debt payments (DO NOT affect cash in drawer)
+        $mpesaDebtPayments = \DB::table('customer_payments')
+            ->where('register_session_id', $session->id)
+            ->where('method','Mpesa')
+            ->sum('amount');
+
     // TOTAL MOVEMENTS
     $movements = \App\Models\CashMovement::where('tenant_id', $tenantId)
         ->where('register_session_id', $session->id)
@@ -343,6 +361,7 @@ public function close(Request $request)
         + $sales->cash
         + $movements->deposits
         + $movements->adjustments
+         + $cashDebtPayments 
         - $movements->drops
         - $movements->expenses
         - $movements->payouts;
@@ -355,6 +374,8 @@ public function close(Request $request)
         'sales',
         'movements',
         'allMovements',
+        'cashDebtPayments',
+        'mpesaDebtPayments', 
         'expectedCash',
         'difference'
     ))->setPaper([0, 0, 226, 900]); // 80mm

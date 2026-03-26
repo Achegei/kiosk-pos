@@ -46,6 +46,13 @@ Closed: {{ $session->closed_at }}<br>
     <div>Mpesa Sales</div>
     <div>KES {{ number_format($sales->mpesa,2) }}</div>
 </div>
+
+<div class="row">
+    <div>Total Mpesa (Sales + Debt)</div>
+    <div>
+        KES {{ number_format(($sales->mpesa ?? 0) + ($mpesaDebtPayments ?? 0), 2) }}
+    </div>
+</div>
 <div class="row">
     <div>Credit Sales</div>
     <div>KES {{ number_format($sales->credit,2) }}</div>
@@ -86,6 +93,19 @@ Closed: {{ $session->closed_at }}<br>
         @endforeach
     @endif
 @endforeach
+
+<hr>
+    <strong>Debt Payments</strong>
+
+    <div class="row">
+        <div>Cash</div>
+        <div>KES {{ number_format($cashDebtPayments ?? 0, 2) }}</div>
+    </div>
+
+    <div class="row">
+        <div>Mpesa</div>
+        <div>KES {{ number_format($mpesaDebtPayments ?? 0, 2) }}</div>
+    </div>
 
 <hr>
 

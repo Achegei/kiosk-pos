@@ -163,12 +163,6 @@ Route::prefix('reports')->middleware(['auth', 'tenant.subscription'])->group(fun
     Route::get('/low-stock/{format}', [ReportsController::class, 'lowStockExport'])
         ->name('reports.low_stock_export'); // exports Excel/CSV/PDF
 
-    // RECENT TRANSACTIONS
-    //Route::get('/recent-transactions', [ReportsController::class, 'recentTransactions'])
-        //->name('reports.recent_transactions'); // opens Blade preview
-    //Route::get('/recent-transactions/{format}', [ReportsController::class, 'recentTransactionsExport'])
-        //->name('reports.recent_transactions_export'); // exports
-
     // DAILY SALES
     Route::get('/daily-sales', [ReportsController::class, 'dailySales'])
         ->name('reports.daily_sales'); // opens Blade preview
@@ -224,6 +218,10 @@ Route::prefix('reports')->middleware(['auth', 'tenant.subscription'])->group(fun
     */
     Route::post('/cash-movements/store', [CashMovementController::class, 'store'])
         ->name('cash-movements.store');
+
+    //Credit Payments 
+    Route::post('/customers/{customer}/pay-credit', [CustomerController::class, 'payCredit'])
+    ->name('customers.payCredit');
 
     // 🔹 Summary of cash movements for a register session (used in close register modal)
     Route::get('/cash-movements/summary/{session}', function($session){

@@ -37,4 +37,9 @@ class Customer extends Model
     });
     }
 
+    public function payments()
+    {
+        return $this->hasMany(CustomerPayment::class);
+    }
+
 }
