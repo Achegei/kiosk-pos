@@ -19,14 +19,11 @@ class CheckDeviceLicense
         $tenantId = $user->tenant_id;
 
         // ✅ device UUID from header OR request OR browser fingerprint fallback
-        $uuid =
-            $request->header('X-DEVICE-ID')
-            ?? $request->input('device_uuid')
-            ?? md5($request->ip().$request->userAgent());
+        $uuid = $request->header('X-DEVICE-ID');
 
-        if(!$uuid){
-            return $this->deny($request,'DEVICE_ID_MISSING');
-        }
+            if(!$uuid){
+                return $this->deny($request,'DEVICE_ID_REQUIRED');
+            }
 
         // ✅ TENANT SAFE lookup
         $device = Device::where('tenant_id',$tenantId)

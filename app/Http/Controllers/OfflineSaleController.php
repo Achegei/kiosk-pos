@@ -11,90 +11,144 @@ use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use App\Services\SaleProcessor;
 
 class OfflineSaleController extends Controller
 {
     public function sync(Request $request)
-{
-    $user = auth()->user();
-
-    if (!$user) {
-        \Log::warning('Unauthenticated sync attempt', [
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
+    {
+        Log::info('DEVICE DEBUG', [
+            'header' => $request->header('X-DEVICE-ID'),
+            'input' => $request->input('device_uuid'),
         ]);
+        $user = auth()->user();
 
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Unauthenticated sync attempt'
-        ], 401);
-    }
+        if (!$user) {
+            \Log::warning('Unauthenticated sync attempt', [
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
 
-    $tenantId = $user->tenant_id;
-    $offlineSales = $request->input('sales');
-    $deviceUuid = $request->header('X-DEVICE-ID', 'unknown');
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthenticated sync attempt'
+            ], 401);
+        }
 
-    if (!is_array($offlineSales)) {
-        \Log::warning('Offline sync failed: sales not array', [
-            'tenant' => $tenantId,
-            'device_uuid' => $deviceUuid
-        ]);
+        $tenantId = $user->tenant_id;
+        $offlineSales = $request->input('sales');
+        $deviceUuid = $request->header('X-DEVICE-ID');
 
-        return response()->json([
-            'status' => 'error',
-            'message' => '"sales" must be an array'
-        ], 400);
-    }
+        if (!$deviceUuid) {
+            $deviceUuid = $request->input('device_uuid');
+        }
 
-    DB::beginTransaction();
+        if (!is_array($offlineSales)) {
+            \Log::warning('Offline sync failed: sales not array', [
+                'tenant' => $tenantId,
+                'device_uuid' => $deviceUuid
+            ]);
 
-    try {
-        $syncedIds = [];
+            return response()->json([
+                'status' => 'error',
+                'message' => '"sales" must be an array'
+            ], 400);
+        }
 
-        foreach ($offlineSales as $saleIndex => $sale) {
-            try {
-                if (empty($sale['items']) || !is_array($sale['items'])) {
-                    \Log::info("Skipping sale with empty items", [
-                        'tenant' => $tenantId,
-                        'device_uuid' => $deviceUuid,
-                        'sale_index' => $saleIndex
-                    ]);
-                    continue;
+        DB::beginTransaction();
+
+        try {
+
+            $syncedIds = [];
+
+            foreach ($offlineSales as $saleIndex => $sale) {
+                // NEW (safe, does nothing yet)
+                SaleProcessor::process($sale, $user, $deviceUuid);
+
+                /*
+                |--------------------------------------------------------------------------
+                | 1. DUPLICATE PROTECTION (SAFE IDEMPOTENCY CHECK)
+                |--------------------------------------------------------------------------
+                */
+                if (!empty($sale['local_id'])) {
+
+                    $exists = OfflineSale::where('local_id', $sale['local_id'])
+                        ->where('synced', true)
+                        ->first();
+
+                    if ($exists) {
+                        \Log::info('Skipping already synced sale', [
+                            'local_id' => $sale['local_id']
+                        ]);
+                        continue;
+                    }
                 }
 
-                // ✅ Create tenant-safe transaction
-                $transaction = Transaction::create([
-                    'tenant_id' => $tenantId,
-                    'customer_id' => $sale['customer_id'] ?? null,
-                    'staff_id' => $user->id,
-                    'total_amount' => 0,
-                    'payment_method' => $sale['payment_method'] ?? 'Cash',
-                    'status' => ($sale['payment_method'] ?? '') === 'Credit'
-                        ? 'On Credit'
-                        : 'Paid',
-                    'mpesa_code' => $sale['mpesa_code'] ?? null,
-                ]);
+                /*
+                |--------------------------------------------------------------------------
+                | 2. VALIDATION
+                |--------------------------------------------------------------------------
+                */
+                if (empty($sale['items']) || !is_array($sale['items'])) {
 
-                $total = 0;
+                        \Log::warning("Invalid offline sale skipped", [
+                            'tenant' => $tenantId,
+                            'device_uuid' => $deviceUuid,
+                            'sale_index' => $saleIndex,
+                            'sale_payload' => $sale // 👈 IMPORTANT
+                        ]);
 
-                foreach ($sale['items'] as $itemIndex => $item) {
-                    try {
+                        continue;
+                    }
+
+                try {
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | 3. CREATE TRANSACTION
+                    |--------------------------------------------------------------------------
+                    */
+                    $transaction = Transaction::create([
+                        'tenant_id' => $tenantId,
+                        'customer_id' => $sale['customer_id'] ?? null,
+                        'staff_id' => $user->id,
+                        'total_amount' => 0,
+                        'payment_method' => $sale['payment_method'] ?? 'Cash',
+                        'status' => ($sale['payment_method'] ?? '') === 'Credit'
+                            ? 'On Credit'
+                            : 'Paid',
+                        'mpesa_code' => $sale['mpesa_code'] ?? null,
+                    ]);
+
+                    $total = 0;
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | 4. PROCESS ITEMS
+                    |--------------------------------------------------------------------------
+                    */
+                    foreach ($sale['items'] as $itemIndex => $item) {
+
                         if (!isset($item['product_id'], $item['quantity'], $item['price'])) {
                             \Log::warning("Skipping item with missing data", [
                                 'tenant' => $tenantId,
                                 'device_uuid' => $deviceUuid,
-                                'sale_id' => $transaction->id,
+                                'sale_index' => $saleIndex,
                                 'item_index' => $itemIndex
                             ]);
                             continue;
                         }
 
                         $productId = $item['product_id'];
-                        $qty = (int)$item['quantity'];
-                        $price = (float)$item['price'];
+                        $qty = (int) $item['quantity'];
+                        $price = (float) $item['price'];
                         $lineTotal = $qty * $price;
 
-                        // Tenant-safe inventory lock
+                        /*
+                        |--------------------------------------------------------------------------
+                        | 5. INVENTORY LOCK (CRITICAL)
+                        |--------------------------------------------------------------------------
+                        */
                         $inventory = Inventory::where('tenant_id', $tenantId)
                             ->where('product_id', $productId)
                             ->lockForUpdate()
@@ -108,6 +162,11 @@ class OfflineSaleController extends Controller
                             throw new \Exception("Not enough stock for product {$productId}");
                         }
 
+                        /*
+                        |--------------------------------------------------------------------------
+                        | 6. SAVE ITEM
+                        |--------------------------------------------------------------------------
+                        */
                         TransactionItem::create([
                             'tenant_id' => $tenantId,
                             'transaction_id' => $transaction->id,
@@ -117,6 +176,11 @@ class OfflineSaleController extends Controller
                             'total' => $lineTotal,
                         ]);
 
+                        /*
+                        |--------------------------------------------------------------------------
+                        | 7. STOCK UPDATE
+                        |--------------------------------------------------------------------------
+                        */
                         $inventory->decrement('quantity', $qty);
 
                         StockMovement::create([
@@ -129,68 +193,70 @@ class OfflineSaleController extends Controller
                         ]);
 
                         $total += $lineTotal;
-
-                    } catch (\Throwable $e) {
-                        \Log::error('Offline sale item processing failed', [
-                            'tenant' => $tenantId,
-                            'device_uuid' => $deviceUuid,
-                            'sale_id' => $transaction->id ?? null,
-                            'item_index' => $itemIndex,
-                            'error' => $e->getMessage()
-                        ]);
-
-                        throw $e; // rollback entire transaction
                     }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | 8. FINALIZE TRANSACTION
+                    |--------------------------------------------------------------------------
+                    */
+                    $transaction->update([
+                        'total_amount' => $total
+                    ]);
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | 9. SAVE OFFLINE LOG (IDEMPOTENCY KEY)
+                    |--------------------------------------------------------------------------
+                    */
+                    $offline = OfflineSale::create([
+                        'tenant_id' => $tenantId,
+                        'sale_data' => $sale,
+                        'synced' => true,
+                        'device_uuid' => $deviceUuid,
+                        'user_id' => $user->id,
+                        'transaction_id' => $transaction->id,
+                        'local_id' => $sale['local_id'] ?? null,
+                    ]);
+
+                    $syncedIds[] = $offline->id;
+
+                } catch (\Throwable $e) {
+
+                    \Log::error('Offline sale sync failed for a sale', [
+                        'tenant' => $tenantId,
+                        'device_uuid' => $deviceUuid,
+                        'sale_index' => $saleIndex,
+                        'error' => $e->getMessage()
+                    ]);
+
+                    throw $e; // rollback whole sync safely
                 }
-
-                $transaction->update(['total_amount' => $total]);
-
-                // Save offline sale record
-                $offline = OfflineSale::create([
-                    'tenant_id' => $tenantId,
-                    'sale_data' => $sale,
-                    'synced' => true,
-                    'device_uuid' => $deviceUuid,
-                    'user_id' => $user->id,
-                    'transaction_id' => $transaction->id,
-                ]);
-
-                $syncedIds[] = $offline->id;
-
-            } catch (\Throwable $e) {
-                \Log::error('Offline sale sync failed for a sale', [
-                    'tenant' => $tenantId,
-                    'device_uuid' => $deviceUuid,
-                    'sale_index' => $saleIndex,
-                    'error' => $e->getMessage()
-                ]);
-
-                throw $e; // rollback DB transaction
             }
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Offline sales synced',
+                'synced_ids' => $syncedIds
+            ]);
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            \Log::error('Offline sales sync failed', [
+                'tenant' => $tenantId,
+                'device_uuid' => $deviceUuid,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Sync failed'
+            ], 500);
         }
-
-        DB::commit();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Offline sales synced',
-            'synced_ids' => $syncedIds
-        ]);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-
-        \Log::error('Offline sales sync failed', [
-            'tenant' => $tenantId,
-            'device_uuid' => $deviceUuid,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Sync failed'
-        ], 500);
     }
-}
 }

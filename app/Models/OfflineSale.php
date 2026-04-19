@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 class OfflineSale extends Model
 {
     protected $fillable = [
+        'local_id',
         'sale_data',   // JSON of items, total, payment method, etc.
         'synced',      // boolean flag
         'transaction_id', // link to created Transaction
-        'tenant_id',   // for multi-tenancy
+        'tenant_id',
+        'device_uuid',   // for multi-tenancy
     ];
 
     protected $casts = [

@@ -240,6 +240,7 @@ Route::prefix('reports')->middleware(['auth', 'tenant.subscription'])->group(fun
     |--------------------------------------------------------------------------
     */
     Route::post('/device/check', [DeviceController::class, 'check']);
+    Route::post('/device/register', [DeviceController::class, 'register']);
 
     /*
     |--------------------------------------------------------------------------

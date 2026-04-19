@@ -1,10 +1,19 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     // ---------------- DEVICE UUID ----------------
-    if (!localStorage.getItem('device_uuid'))
-        localStorage.setItem('device_uuid', crypto.randomUUID());
+    function generateUUID() {
+    return (crypto?.randomUUID)
+        ? crypto.randomUUID()
+        : 'dev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+    if (!localStorage.getItem('device_uuid')) {
+    localStorage.setItem('device_uuid', generateUUID());
+}
 
-    const deviceId = localStorage.getItem('device_uuid');
+    const deviceId = localStorage.getItem('device_uuid') 
+    || generateUUID();
+
+        localStorage.setItem('device_uuid', deviceId);
 
     // ---------------- ELEMENTS ----------------
     const cartBody = document.getElementById('cartBody');
@@ -18,6 +27,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const form = document.getElementById('checkoutForm');
     const productsInput = document.getElementById('products');
     const checkoutBtn = form.querySelector('button[type="submit"]');
+    const customerSelect = document.getElementById('customer');
 
     // ---------------- GLOBAL CART ----------------
     window.cart = [];
@@ -270,9 +280,10 @@ document.addEventListener("DOMContentLoaded", function () {
             });
 
             // ===== ENRICH: Totals include offline items =====
+            const TAX_RATE = 0;
             const subtotal = window.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
             subtotalEl.innerText = subtotal.toFixed(2);
-            taxEl.innerText = (subtotal * 0).toFixed(2); // currently 0%
+            taxEl.innerText = (subtotal * TAX_RATE).toFixed(2);
             productsInput.value = JSON.stringify(window.cart);
 
             calculateChange();
@@ -285,7 +296,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const cash=parseFloat(cashInput.value)||0;
         const subtotal=parseFloat(subtotalEl.innerText)||0;
 
-        const change=cash-subtotal;
+        const tax = parseFloat(taxEl.innerText) || 0;
+        const total = subtotal + tax;
+        const change = cash - total;
 
         changeEl.innerText=change>=0?change.toFixed(2):'0.00';
     }
@@ -435,10 +448,18 @@ form.addEventListener('submit', async function(e){
         let queue = JSON.parse(localStorage.getItem('offline_sales_queue') || '[]');
 
         queue.push({
-            subtotal: subtotalValue,
-            payment_method: method,
+            local_id: 'sale_' + Date.now() + '_' + Math.random().toString(36).substring(2),
             customer_id: document.getElementById('customer').value || null,
-            customer_name: document.querySelector('#customer option:checked')?.text || 'Walk-in'
+            payment_method: method,
+            mpesa_code: mpesaRef ?? null,
+            items: window.cart.map(p => ({
+                product_id: p.id,
+                quantity: p.quantity,
+                price: p.price
+            })),
+            subtotal: subtotalValue,
+            timestamp: new Date().toISOString(),
+            device_uuid: deviceId
         });
 
         localStorage.setItem('offline_sales_queue', JSON.stringify(queue));
@@ -651,16 +672,21 @@ function saveOfflineSale(sale) {
 
     let queue = JSON.parse(localStorage.getItem(offlineQueueKey) || '[]');
 
-    // Add unique local ID and synced flag
     const enrichedSale = {
         ...sale,
-        local_id: crypto.randomUUID(),
+
+        // 🔥 FIX: fallback in case crypto not supported
+        local_id: (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : 'sale_' + Date.now() + '_' + Math.random().toString(36).substring(2),
+
         synced: false,
         timestamp: new Date().toISOString(),
-        device_uuid: deviceId
+        device_uuid: deviceId || 'unknown'
     };
 
     queue.push(enrichedSale);
+
     localStorage.setItem(offlineQueueKey, JSON.stringify(queue));
 
     console.log('Offline sale saved:', enrichedSale);
@@ -674,42 +700,37 @@ async function syncOfflineSales() {
     let queue = JSON.parse(localStorage.getItem(offlineQueueKey) || '[]');
     if (!queue.length) return;
 
-    const unsynced = [];
+    try {
+        const res = await fetch('/api/offline-sync', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-DEVICE-ID': deviceId
+            },
+            body: JSON.stringify({ sales: queue })
+        });
 
-    for (let sale of queue) {
-        if (sale.synced) continue;
+        const data = await res.json();
 
-        try {
-            const res = await fetch('/api/offline-sync', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({sales: [sale]})
-            });
+        if (data.status === 'success') {
+            console.log('Offline sync success');
 
-            const data = await res.json();
-            if (data.status === 'success') {
-                sale.synced = true;
-                console.log('Sale synced:', sale.local_id);
-            } else {
-                unsynced.push(sale);
-                console.warn('Sale not synced, server returned error:', data);
-            }
-        } catch (err) {
-            unsynced.push(sale);
-            console.error('Sync failed for sale', sale.local_id, err);
+            // CLEAR ONLY ON SUCCESS
+            localStorage.removeItem(offlineQueueKey);
+        } else {
+            console.warn('Sync failed response:', data);
+
+            // KEEP DATA SAFE
+            localStorage.setItem(offlineQueueKey, JSON.stringify(queue));
         }
-    }
 
-    localStorage.setItem(offlineQueueKey, JSON.stringify(unsynced));
+    } catch (err) {
+        console.error('Sync failed:', err);
 
-    if (unsynced.length === 0 && queue.length > 0) {
-        alert('Offline sales synced successfully!');
+        // KEEP DATA SAFE
+        localStorage.setItem(offlineQueueKey, JSON.stringify(queue));
     }
 }
-
-// Trigger sync on network reconnect
-window.addEventListener('online', syncOfflineSales);
-
 
 /**
  * Complete sale with offline fallback
@@ -717,13 +738,14 @@ window.addEventListener('online', syncOfflineSales);
  */
 function completeSale(cart, customerId = null, paymentMethod = 'Cash', mpesaCode = null) {
     const salePayload = {
+        local_id: 'sale_' + Date.now() + '_' + Math.random().toString(36).substring(2),
+
         customer_id: customerId,
         payment_method: paymentMethod,
         mpesa_code: mpesaCode,
         items: cart.map(p => ({product_id: p.id, quantity: p.quantity, price: p.price})),
         subtotal: cart.reduce((sum, p) => sum + p.price * p.quantity, 0),
         timestamp: new Date().toISOString(),
-        device_uuid: deviceId
     };
 
     if (navigator.onLine) {
@@ -759,9 +781,12 @@ function completeSale(cart, customerId = null, paymentMethod = 'Cash', mpesaCode
 /**
  * Optional: show offline/online status & unsynced count in POS UI
  */
+// -----------------------------
+// OFFLINE STATUS UI
+// -----------------------------
 function updateOfflineStatus() {
     const queue = JSON.parse(localStorage.getItem(offlineQueueKey) || '[]');
-    const statusEl = document.getElementById('offlineStatus'); // create <span id="offlineStatus"></span> in HTML
+    const statusEl = document.getElementById('offlineStatus');
 
     if (!statusEl) return;
 
@@ -778,15 +803,13 @@ function updateOfflineStatus() {
     }
 }
 
-window.addEventListener('online', updateOfflineStatus);
-window.addEventListener('offline', updateOfflineStatus);
-setInterval(updateOfflineStatus, 5000);
-
-//network check
+// -----------------------------
+// NETWORK STATUS UI
+// -----------------------------
 const networkStatus = document.getElementById('networkStatus');
 
 function updateNetworkStatus() {
-    if (!networkStatus) return; // safety
+    if (!networkStatus) return;
 
     if (navigator.onLine) {
         networkStatus.innerText = 'ONLINE';
@@ -799,12 +822,72 @@ function updateNetworkStatus() {
     }
 }
 
-// Initial check
-updateNetworkStatus();
+// -----------------------------
+// DEVICE CHECK (SAFE + RETRY)
+// -----------------------------
+async function checkDevice() {
+    if (!navigator.onLine) {
+        console.log('Skipping device check (offline)');
+        return;
+    }
 
-// Listen for network changes
-window.addEventListener('online', updateNetworkStatus);
-window.addEventListener('offline', updateNetworkStatus);
+    if (typeof deviceId === 'undefined' || !deviceId) {
+        console.warn('deviceId not set yet');
+        return;
+    }
+
+    try {
+        const res = await fetch('/device/check', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-DEVICE-ID': deviceId
+            },
+            body: JSON.stringify({ device_uuid: deviceId })
+        });
+
+        if (!res.ok) {
+            console.error("Device check failed HTTP:", res.status);
+            return;
+        }
+        const data = await res.json();
+        console.log('Device status:', data);
+
+        if (!data.allowed) {
+            alert(data.message);
+        }
+
+    } catch (e) {
+        console.error('Device check failed', e);
+    }
+}
+
+// -----------------------------
+// INIT (SAFE ORDER)
+// -----------------------------
+function initSystem() {
+    updateOfflineStatus();
+    updateNetworkStatus();
+    checkDevice();
+}
+
+// Initial load
+window.addEventListener('load', initSystem);
+
+// Network listeners
+window.addEventListener('online', () => {
+    updateOfflineStatus();
+    updateNetworkStatus();
+    checkDevice(); // retry device validation
+});
+
+window.addEventListener('offline', () => {
+    updateOfflineStatus();
+    updateNetworkStatus();
+});
+
+// periodic UI update
+setInterval(updateOfflineStatus, 5000);
 
 //barcode scanner support
 // ---------------- BARCODE AUTO-FOCUS & STAY-READY ----------------
@@ -908,3 +991,5 @@ customerSelect?.addEventListener('change', async function() {
         console.error('Fetch credit error:', err);
     }
 });
+
+window.checkDevice = checkDevice;
