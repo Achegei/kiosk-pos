@@ -1,13 +1,15 @@
 console.log("POS Service Worker loaded");
 
-const CACHE_NAME = 'pos-cache-v3';
+const CACHE_NAME = 'pos-cache-v4';
 
 // =============================
-// INSTALL (APP SHELL CACHE)
+// INSTALL (CACHE APP SHELL)
 // =============================
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(async cache => {
+        (async () => {
+
+            const cache = await caches.open(CACHE_NAME);
 
             console.log("Caching POS shell...");
 
@@ -15,24 +17,24 @@ self.addEventListener('install', event => {
                 const res = await fetch('/build/manifest.json');
                 const manifest = await res.json();
 
-                const assets = Object.values(manifest).map(entry => '/build/' + entry.file);
+                const assets = Object.values(manifest)
+                    .filter(entry => entry.file)
+                    .map(entry => '/build/' + entry.file);
 
-                const staticAssets = [
+                await cache.addAll([
                     '/',
                     '/pos',
                     '/dashboard',
-                    '/offline', // optional fallback page if you have it
                     ...assets
-                ];
-
-                await cache.addAll(staticAssets);
+                ]);
 
                 console.log("POS assets cached");
 
             } catch (err) {
-                console.error("SW install cache error:", err);
+                console.warn("Manifest fetch failed, continuing without it");
             }
-        })
+
+        })()
     );
 
     self.skipWaiting();
@@ -43,16 +45,16 @@ self.addEventListener('install', event => {
 // =============================
 self.addEventListener('activate', event => {
     event.waitUntil(
-        caches.keys().then(keys => {
-            return Promise.all(
-                keys.map(key => {
-                    if (key !== CACHE_NAME) {
+        caches.keys().then(keys =>
+            Promise.all(
+                keys
+                    .filter(key => key !== CACHE_NAME)
+                    .map(key => {
                         console.log("Deleting old cache:", key);
                         return caches.delete(key);
-                    }
-                })
-            );
-        })
+                    })
+            )
+        )
     );
 
     self.clients.claim();
@@ -63,26 +65,29 @@ self.addEventListener('activate', event => {
 // =============================
 self.addEventListener('fetch', event => {
 
-    const url = new URL(event.request.url);
+    const req = event.request;
+    const url = new URL(req.url);
 
     // =============================
-    // 1. API REQUESTS (CRITICAL FIX)
+    // 1. API REQUESTS → NETWORK FIRST
     // =============================
     if (
         url.pathname.startsWith('/api/') ||
+        url.pathname.startsWith('/fetch/') ||
         url.pathname.startsWith('/register') ||
         url.pathname.startsWith('/cash') ||
         url.pathname.startsWith('/checkout')
     ) {
 
         event.respondWith(
-            fetch(event.request).catch(() => {
+            fetch(req).catch(() => {
 
-                // 🔥 Offline-safe response so UI doesn't break
+                console.warn("Offline API:", url.pathname);
+
                 return new Response(JSON.stringify({
                     success: false,
                     offline: true,
-                    message: "You are offline. Action queued locally."
+                    message: "Offline mode"
                 }), {
                     headers: { "Content-Type": "application/json" }
                 });
@@ -93,28 +98,47 @@ self.addEventListener('fetch', event => {
     }
 
     // =============================
-    // 2. STATIC FILES (CACHE FIRST)
+    // 2. NAVIGATION (HTML PAGES)
+    // =============================
+    if (req.mode === 'navigate') {
+
+        event.respondWith(
+            fetch(req).catch(() => {
+
+                console.warn("Offline page → serving cache");
+
+                return caches.match(req)
+                    || caches.match('/pos')
+                    || caches.match('/');
+            })
+        );
+
+        return;
+    }
+
+    // =============================
+    // 3. STATIC FILES → CACHE FIRST
     // =============================
     event.respondWith(
-        caches.match(event.request).then(cached => {
+        caches.match(req).then(cached => {
 
             if (cached) return cached;
 
-            return fetch(event.request).then(response => {
+            return fetch(req)
+                .then(res => {
 
-                // Optional: update cache dynamically
-                const copy = response.clone();
+                    const copy = res.clone();
 
-                caches.open(CACHE_NAME).then(cache => {
-                    cache.put(event.request, copy);
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(req, copy);
+                    });
+
+                    return res;
+                })
+                .catch(() => {
+                    // last fallback (prevents crash)
+                    return new Response('', { status: 200 });
                 });
-
-                return response;
-
-            }).catch(() => {
-                // last fallback
-                return caches.match('/');
-            });
         })
     );
 });

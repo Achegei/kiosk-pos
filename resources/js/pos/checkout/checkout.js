@@ -80,7 +80,7 @@ async function handleMpesa(subtotal) {
 }
 
 // =============================
-// SUBMIT SALE (ONLINE)
+// SUBMIT SALE
 // =============================
 async function submitSale(payload, form) {
 
@@ -124,56 +124,52 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
     let cash = getCash();
     let mpesaRef = null;
 
-    // ================= VALIDATE =================
-    if (!validateSale(subtotal, method, cash)) {
-        window.POS.state.unlockCheckout();
-        return;
-    }
+    try {
 
-    // ================= MPESA =================
-    if (method === "Mpesa") {
-        const mpesa = await handleMpesa(subtotal);
-        if (!mpesa) {
-            window.POS.state.unlockCheckout();
+        // ================= VALIDATE =================
+        if (!validateSale(subtotal, method, cash)) {
             return;
         }
 
-        mpesaRef = mpesa.mpesaRef;
-        cash = mpesa.cashGiven;
-    }
+        // ================= MPESA =================
+        if (method === "Mpesa") {
+            const mpesa = await handleMpesa(subtotal);
+            if (!mpesa) return;
 
-    // ================= CUSTOMER + CREDIT =================
-    const selectedCustomer = document.getElementById('customer');
-    const customerName = selectedCustomer?.selectedOptions[0]?.text || 'Walk-in';
-    const creditBefore = parseFloat(selectedCustomer?.selectedOptions[0]?.dataset.credit || 0);
+            mpesaRef = mpesa.mpesaRef;
+            cash = mpesa.cashGiven;
+        }
 
-    let creditChange = 0;
-    let creditAfter = creditBefore;
+        // ================= CUSTOMER =================
+        const selectedCustomer = document.getElementById('customer');
+        const customerName = selectedCustomer?.selectedOptions[0]?.text || 'Walk-in';
+        const creditBefore = parseFloat(selectedCustomer?.selectedOptions[0]?.dataset.credit || 0);
 
-    if (method === "Credit") {
-        creditChange = subtotal;
-        creditAfter = creditBefore + creditChange;
-    }
+        let creditChange = 0;
+        let creditAfter = creditBefore;
 
-    // ================= PAYLOAD =================
-    const payload = {
-        _token: document.querySelector('input[name=_token]')?.value,
-        customer_id: getCustomer(),
-        payment_method: method,
-        mpesa_code: mpesaRef,
-        products: getCart().map(p => ({
-            id: p.id,
-            quantity: p.quantity
-        })),
-        subtotal,
+        if (method === "Credit") {
+            creditChange = subtotal;
+            creditAfter = creditBefore + creditChange;
+        }
 
-        credit_before: creditBefore,
-        credit_change: creditChange,
-        credit_after: creditAfter,
-        customer_name: customerName
-    };
+        // ================= PAYLOAD =================
+        const payload = {
+            _token: document.querySelector('input[name=_token]')?.value,
+            customer_id: getCustomer(),
+            payment_method: method,
+            mpesa_code: mpesaRef,
+            products: getCart().map(p => ({
+                id: p.id,
+                quantity: p.quantity
+            })),
+            subtotal,
 
-    try {
+            credit_before: creditBefore,
+            credit_change: creditChange,
+            credit_after: creditAfter,
+            customer_name: customerName
+        };
 
         // ================= ONLINE =================
         if (navigator.onLine) {
@@ -204,14 +200,38 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
             });
 
         } else {
-            throw new Error("Offline mode");
+
+            // ================= OFFLINE QUEUE =================
+            window.POS.offlineSync.queueSale({
+                ...payload,
+                local_id: 'sale_' + Date.now(),
+                timestamp: new Date().toISOString(),
+                device_uuid: window.POS.device?.getId?.() || 'unknown'
+            });
+
+            printReceipt({
+                ...payload,
+                offline: true,
+                cash,
+                change: Math.max(0, cash - subtotal)
+            });
+
+            Swal.fire('Offline Sale', 'Saved locally & will sync automatically', 'info');
+
+            window.dispatchEvent(new Event('offlineSyncUpdated'));
         }
+
+        // ================= CLEANUP =================
+        window.POS.state.clearCart();
+        window.POS?.cart?.render?.();
+        document.getElementById('cashGiven').value = '';
 
     } catch (err) {
 
-        console.warn("Switching to offline mode:", err.message);
+        console.error("Checkout error:", err);
 
-        // ================= OFFLINE QUEUE (FIXED) =================
+        Swal.fire('Error', 'Sale failed or saved offline', 'warning');
+
         window.POS.offlineSync.queueSale({
             ...payload,
             local_id: 'sale_' + Date.now(),
@@ -219,16 +239,8 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
             device_uuid: window.POS.device?.getId?.() || 'unknown'
         });
 
-        Swal.fire('Offline Sale', 'Saved locally & will sync automatically', 'info');
+    } finally {
 
-        window.dispatchEvent(new Event('offlineSyncUpdated'));
+        window.POS.state.unlockCheckout();
     }
-
-    // ================= CLEANUP =================
-    window.POS.state.clearCart();
-    window.POS?.cart?.render?.();
-
-    document.getElementById('cashGiven').value = '';
-
-    window.POS.state.unlockCheckout();
 });
