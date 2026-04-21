@@ -3,7 +3,7 @@ console.log("POS Service Worker loaded");
 const CACHE_NAME = 'pos-cache-v4';
 
 // =============================
-// INSTALL (CACHE APP SHELL)
+// INSTALL
 // =============================
 self.addEventListener('install', event => {
     event.waitUntil(
@@ -31,7 +31,7 @@ self.addEventListener('install', event => {
                 console.log("POS assets cached");
 
             } catch (err) {
-                console.warn("Manifest fetch failed, continuing without it");
+                console.warn("Manifest fetch failed");
             }
 
         })()
@@ -41,7 +41,7 @@ self.addEventListener('install', event => {
 });
 
 // =============================
-// ACTIVATE (CLEAN OLD CACHE)
+// ACTIVATE
 // =============================
 self.addEventListener('activate', event => {
     event.waitUntil(
@@ -49,16 +49,46 @@ self.addEventListener('activate', event => {
             Promise.all(
                 keys
                     .filter(key => key !== CACHE_NAME)
-                    .map(key => {
-                        console.log("Deleting old cache:", key);
-                        return caches.delete(key);
-                    })
+                    .map(key => caches.delete(key))
             )
         )
     );
 
     self.clients.claim();
 });
+
+// =============================
+// BACKGROUND SYNC (🔥 FIXED LOCATION)
+// =============================
+self.addEventListener('sync', event => {
+
+    if (event.tag === 'sync-sales') {
+
+        console.log("🔄 Background sync triggered");
+
+        event.waitUntil(syncOfflineSales());
+    }
+});
+
+// =============================
+// SYNC FUNCTION
+// =============================
+async function syncOfflineSales() {
+
+    try {
+
+        const clients = await self.clients.matchAll();
+
+        clients.forEach(client => {
+            client.postMessage({
+                type: "SYNC_REQUEST"
+            });
+        });
+
+    } catch (err) {
+        console.error("Background sync failed:", err);
+    }
+}
 
 // =============================
 // FETCH STRATEGY
@@ -69,7 +99,7 @@ self.addEventListener('fetch', event => {
     const url = new URL(req.url);
 
     // =============================
-    // 1. API REQUESTS → NETWORK FIRST
+    // API → NETWORK FIRST
     // =============================
     if (
         url.pathname.startsWith('/api/') ||
@@ -82,12 +112,9 @@ self.addEventListener('fetch', event => {
         event.respondWith(
             fetch(req).catch(() => {
 
-                console.warn("Offline API:", url.pathname);
-
                 return new Response(JSON.stringify({
                     success: false,
-                    offline: true,
-                    message: "Offline mode"
+                    offline: true
                 }), {
                     headers: { "Content-Type": "application/json" }
                 });
@@ -98,47 +125,38 @@ self.addEventListener('fetch', event => {
     }
 
     // =============================
-    // 2. NAVIGATION (HTML PAGES)
+    // NAVIGATION
     // =============================
     if (req.mode === 'navigate') {
 
         event.respondWith(
-            fetch(req).catch(() => {
-
-                console.warn("Offline page → serving cache");
-
-                return caches.match(req)
-                    || caches.match('/pos')
-                    || caches.match('/');
-            })
+            fetch(req).catch(() =>
+                caches.match('/pos') || caches.match('/')
+            )
         );
 
         return;
     }
 
     // =============================
-    // 3. STATIC FILES → CACHE FIRST
+    // STATIC CACHE FIRST
     // =============================
     event.respondWith(
         caches.match(req).then(cached => {
 
             if (cached) return cached;
 
-            return fetch(req)
-                .then(res => {
+            return fetch(req).then(res => {
 
-                    const copy = res.clone();
+                const copy = res.clone();
 
-                    caches.open(CACHE_NAME).then(cache => {
-                        cache.put(req, copy);
-                    });
-
-                    return res;
-                })
-                .catch(() => {
-                    // last fallback (prevents crash)
-                    return new Response('', { status: 200 });
+                caches.open(CACHE_NAME).then(cache => {
+                    cache.put(req, copy);
                 });
+
+                return res;
+
+            }).catch(() => new Response('', { status: 200 }));
         })
     );
 });

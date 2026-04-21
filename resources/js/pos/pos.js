@@ -30,6 +30,11 @@ import "./ui/receipt";
 import "./ui/calculator";
 
 // =============================
+// PRINTER MODULES (NEW)
+// =============================
+import "./printer/escpos";
+
+// =============================
 // UTILITIES (MISSING BEFORE)
 // =============================
 import "./utils/offlineSync";

@@ -28,6 +28,24 @@ async function fetchProducts(query) {
 
     if (!query) return [];
 
+    // =============================
+    // 1. ALWAYS TRY LOCAL FIRST (FAST UI)
+    // =============================
+    let localResults = [];
+
+    if (window.POS?.db?.searchProducts) {
+        localResults = await window.POS.db.searchProducts(query);
+    }
+
+    // If offline → return instantly
+    if (!navigator.onLine) {
+        console.log("📴 Offline → using IndexedDB");
+        return localResults;
+    }
+
+    // =============================
+    // 2. TRY NETWORK (REFRESH CACHE)
+    // =============================
     try {
 
         let res = await fetch(`/fetch/products?query=${encodeURIComponent(query)}`, {
@@ -42,16 +60,16 @@ async function fetchProducts(query) {
 
             if (Array.isArray(data) && data.length) {
 
-                // 🔥 SAVE TO INDEXEDDB
-                if (window.POS?.db?.saveProducts) {
-                    await window.POS.db.saveProducts(data);
-                }
+                // ✅ Update cache
+                await window.POS.db.saveProducts(data);
 
                 return data;
             }
         }
 
-        // 🔁 fallback endpoint
+        // =============================
+        // 3. FALLBACK (BARCODE / EXACT)
+        // =============================
         res = await fetch(`/fetch/products/${encodeURIComponent(query)}`, {
             headers: {
                 'X-DEVICE-ID': deviceId,
@@ -66,26 +84,19 @@ async function fetchProducts(query) {
         }
 
         if (product?.length) {
-
-            // 🔥 SAVE TO INDEXEDDB
-            if (window.POS?.db?.saveProducts) {
-                await window.POS.db.saveProducts(product);
-            }
+            await window.POS.db.saveProducts(product);
+            return product;
         }
-
-        return product || [];
 
     } catch (err) {
 
-        console.warn("Offline → using IndexedDB");
-
-        // 🔥 OFFLINE FALLBACK
-        if (window.POS?.db?.searchProducts) {
-            return await window.POS.db.searchProducts(query);
-        }
-
-        return [];
+        console.warn("⚠ Network failed → fallback to cache");
     }
+
+    // =============================
+    // 4. FINAL FALLBACK (CACHE)
+    // =============================
+    return localResults;
 }
 // =============================
 // RENDER SUGGESTIONS

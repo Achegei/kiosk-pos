@@ -7,24 +7,20 @@ window.POS = window.POS || {};
 window.POS.offlineSync = window.POS.offlineSync || {};
 
 // =============================
-// LOCK (GLOBAL SAFE)
+// CONFIG
+// =============================
+const SALES_QUEUE_KEY = "offline_sales_queue";
+const CASH_QUEUE_KEY = "offline_cash_movements";
+const SYNC_LOCK_KEY = "offline_sync_lock";
+
+// =============================
+// STATE
 // =============================
 let isSyncing = false;
 
 // =============================
-// OFFLINE QUEUE KEYS
+// SAFE PARSE
 // =============================
-const SALES_QUEUE_KEY = "offline_sales_queue";
-const CASH_QUEUE_KEY = "offline_cash_movements";
-
-// =============================
-// HELPERS
-// =============================
-function getCSRF() {
-    return document.querySelector('meta[name="csrf-token"]')?.content;
-}
-
-// SAFE JSON PARSE (FIX CRASHES)
 function safeParse(value) {
     try {
         return JSON.parse(value || "[]");
@@ -35,7 +31,7 @@ function safeParse(value) {
 }
 
 // =============================
-// GETTERS
+// STORAGE
 // =============================
 function getSalesQueue() {
     return safeParse(localStorage.getItem(SALES_QUEUE_KEY));
@@ -45,9 +41,6 @@ function getCashQueue() {
     return safeParse(localStorage.getItem(CASH_QUEUE_KEY));
 }
 
-// =============================
-// SAVERS
-// =============================
 function saveSalesQueue(queue) {
     localStorage.setItem(SALES_QUEUE_KEY, JSON.stringify(queue));
 }
@@ -57,62 +50,18 @@ function saveCashQueue(queue) {
 }
 
 // =============================
-// UI COUNTS
+// CSRF
 // =============================
-window.POS.offlineSync.getPendingCounts = function () {
-    return {
-        sales: getSalesQueue().length,
-        cash: getCashQueue().length
-    };
-};
+function getCSRF() {
+    return document.querySelector('meta[name="csrf-token"]')?.content;
+}
 
 // =============================
-// QUEUE SALE
-// =============================
-window.POS.offlineSync.queueSale = function (sale) {
-
-    const queue = getSalesQueue();
-
-    queue.push({
-        id: Date.now(),
-        data: structuredClone ? structuredClone(sale) : JSON.parse(JSON.stringify(sale)),
-        retries: 0
-    });
-
-    saveSalesQueue(queue);
-
-    console.log("Sale queued offline");
-
-    window.dispatchEvent(new Event("offlineSyncUpdated"));
-};
-
-// =============================
-// QUEUE CASH
-// =============================
-window.POS.offlineSync.queueCashMovement = function (movement) {
-
-    const queue = getCashQueue();
-
-    queue.push({
-        id: Date.now(),
-        data: structuredClone ? structuredClone(movement) : JSON.parse(JSON.stringify(movement)),
-        retries: 0
-    });
-
-    saveCashQueue(queue);
-
-    console.log("Cash movement queued offline");
-
-    window.dispatchEvent(new Event("cashMovementUpdated"));
-};
-
-// =============================
-// SAFE FETCH WRAPPER
+// SAFE FETCH (CRITICAL FIX)
 // =============================
 async function safePost(url, payload) {
 
     try {
-
         const res = await fetch(url, {
             method: "POST",
             headers: {
@@ -127,53 +76,121 @@ async function safePost(url, payload) {
 
         try {
             data = await res.json();
-        } catch (e) {
-            console.warn("Invalid JSON response");
-            data = {};
+        } catch {
+            data = { success: false };
         }
 
-        return { ok: res.ok, data };
+        return {
+            ok: res.ok,
+            status: res.status,
+            data
+        };
 
     } catch (err) {
-        return { ok: false, data: {}, error: err };
+        return {
+            ok: false,
+            error: err
+        };
     }
 }
 
 // =============================
-// SYNC SALES
+// QUEUE SALE (FIXED)
+// =============================
+window.POS.offlineSync.queueSale = function (sale) {
+
+    const queue = getSalesQueue();
+
+    queue.push({
+        id: crypto.randomUUID?.() || Date.now(),
+        data: structuredClone ? structuredClone(sale) : JSON.parse(JSON.stringify(sale)),
+        retries: 0,
+        status: "pending"
+    });
+
+    saveSalesQueue(queue);
+
+    window.dispatchEvent(new Event("offlineSyncUpdated"));
+};
+
+// =============================
+// QUEUE CASH
+// =============================
+window.POS.offlineSync.queueCashMovement = function (movement) {
+
+    const queue = getCashQueue();
+
+    queue.push({
+        id: crypto.randomUUID?.() || Date.now(),
+        data: structuredClone ? structuredClone(movement) : JSON.parse(JSON.stringify(movement)),
+        retries: 0,
+        status: "pending"
+    });
+
+    saveCashQueue(queue);
+
+    window.dispatchEvent(new Event("cashMovementUpdated"));
+};
+
+// =============================
+// SYNC SALES (FIXED ATOMIC)
 // =============================
 async function syncSales() {
 
-    let queue = getSalesQueue();
-    if (!queue.length) return;
+    const sales = await window.POS.db.getPendingSales();
 
-    console.log(`Syncing ${queue.length} sales...`);
+    if (!sales.length) return;
 
-    const remaining = [];
+    console.log(`🔄 Syncing ${sales.length} sales...`);
 
-    for (let item of queue) {
+    for (let sale of sales) {
 
-        const { ok, data } = await safePost("/api/sync-sale", item.data);
+        try {
 
-        if (ok && data?.success) {
-            console.log("✅ Sale synced:", item.id);
-            continue;
-        }
+            // ✅ SEND ONLY CLEAN PAYLOAD
+            const payload = { ...sale };
+            delete payload.id;
+            delete payload.synced;
+            delete payload.created_at;
 
-        console.warn("❌ Sale failed:", item.id);
+            const { ok, data } = await safePost("/api/sync-sale", payload);
 
-        item.retries = (item.retries || 0) + 1;
+            if (ok && data?.success) {
 
-        if (item.retries < 5) {
-            remaining.push(item);
-        } else {
-            console.error("🚨 Dropped sale:", item.id);
+                console.log("✅ Synced:", sale.local_id);
+
+                // ✅ MARK AS SYNCED (IMPORTANT)
+                await window.POS.db.markSaleSynced(sale.local_id);
+
+                // ✅ SAVE SERVER RECEIPT (UPGRADE FROM OFFLINE)
+                if (data.receipt) {
+                    await window.POS.db.saveReceipt({
+                        ...data.receipt,
+                        sale_local_id: sale.local_id
+                    });
+                }
+
+                // ✅ NOTIFY UI
+                window.dispatchEvent(new CustomEvent("saleSynced", {
+                    detail: { local_id: sale.local_id, server: data }
+                }));
+
+            } else {
+                console.warn("❌ Server rejected:", sale.local_id);
+            }
+
+        } catch (err) {
+
+            console.error("❌ Sync error:", sale.local_id, err);
+
+            // ❗ DO NOTHING → keep sale pending
+            // it will retry next cycle
         }
     }
 
-    saveSalesQueue(remaining);
-
     window.dispatchEvent(new Event("offlineSyncUpdated"));
+
+    console.log("✅ Sync cycle complete");
 }
 
 // =============================
@@ -184,8 +201,6 @@ async function syncCash() {
     let queue = getCashQueue();
     if (!queue.length) return;
 
-    console.log(`Syncing ${queue.length} cash movements...`);
-
     const remaining = [];
 
     for (let item of queue) {
@@ -193,23 +208,26 @@ async function syncCash() {
         const { ok, data } = await safePost("/api/cash-movements/sync", item.data);
 
         if (ok && data?.success) {
+
             console.log("✅ Cash synced:", item.id);
+
+            window.dispatchEvent(new CustomEvent("cashSynced", {
+                detail: data
+            }));
+
             continue;
         }
 
-        console.warn("❌ Cash failed:", item.id);
-
-        item.retries = (item.retries || 0) + 1;
+        item.retries++;
 
         if (item.retries < 5) {
             remaining.push(item);
         } else {
-            console.error("🚨 Dropped cash movement:", item.id);
+            console.error("❌ Dropped cash:", item.id);
         }
     }
 
     saveCashQueue(remaining);
-
     window.dispatchEvent(new Event("cashMovementUpdated"));
 }
 
@@ -224,7 +242,6 @@ async function syncAll() {
     isSyncing = true;
 
     try {
-
         console.log("🔄 Sync started");
 
         await syncSales();
@@ -238,7 +255,7 @@ async function syncAll() {
 }
 
 // =============================
-// TRIGGERS
+// AUTO SYNC
 // =============================
 window.addEventListener("online", syncAll);
 setInterval(syncAll, 10000);
@@ -247,8 +264,6 @@ setInterval(syncAll, 10000);
 // INIT
 // =============================
 document.addEventListener("DOMContentLoaded", () => {
-
     syncAll();
-
     window.dispatchEvent(new Event("offlineSyncUpdated"));
 });

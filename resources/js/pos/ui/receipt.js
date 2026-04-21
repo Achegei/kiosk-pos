@@ -181,3 +181,33 @@ function renderReceipt(receipt = {}) {
 // =============================
 window.POS.receipt.print = renderReceipt;
 window.printReceipt = renderReceipt;
+
+// =============================
+// REPRINT FROM INDEXEDDB
+// =============================
+window.POS.reprintReceipt = async function(local_id) {
+
+    try {
+
+        const receipt = await window.POS.db.getReceiptBySale(local_id);
+
+        if (!receipt) {
+            Swal.fire('Error', 'Receipt not found', 'error');
+            return;
+        }
+
+        console.log("🔁 Reprinting receipt:", local_id);
+
+       if (window.POS?.printer?.escposPrint) {
+            window.POS.printer.escposPrint(receipt);
+        } else {
+            window.printReceipt(receipt);
+        }
+
+    } catch (err) {
+
+        console.error("Reprint failed:", err);
+
+        Swal.fire('Error', 'Could not reprint receipt', 'error');
+    }
+};

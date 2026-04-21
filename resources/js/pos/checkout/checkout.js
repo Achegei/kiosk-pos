@@ -106,7 +106,7 @@ function printReceipt(receipt) {
 }
 
 // =============================
-// FINAL CHECKOUT
+// FINAL CHECKOUT (🔥 FIXED)
 // =============================
 document.getElementById('checkoutForm')?.addEventListener('submit', async function (e) {
 
@@ -119,12 +119,15 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
 
     window.POS.state.lockCheckout();
 
-    const method = getPaymentMethod();
-    const subtotal = getSubtotal();
-    let cash = getCash();
-    let mpesaRef = null;
+    let payload = null;
+    let method, subtotal, cash, mpesaRef, customerName;
 
     try {
+
+        method = getPaymentMethod();
+        subtotal = getSubtotal();
+        cash = getCash();
+        mpesaRef = null;
 
         // ================= VALIDATE =================
         if (!validateSale(subtotal, method, cash)) {
@@ -142,7 +145,7 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
 
         // ================= CUSTOMER =================
         const selectedCustomer = document.getElementById('customer');
-        const customerName = selectedCustomer?.selectedOptions[0]?.text || 'Walk-in';
+        customerName = selectedCustomer?.selectedOptions[0]?.text || 'Walk-in';
         const creditBefore = parseFloat(selectedCustomer?.selectedOptions[0]?.dataset.credit || 0);
 
         let creditChange = 0;
@@ -154,7 +157,7 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
         }
 
         // ================= PAYLOAD =================
-        const payload = {
+        payload = {
             _token: document.querySelector('input[name=_token]')?.value,
             customer_id: getCustomer(),
             payment_method: method,
@@ -171,7 +174,7 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
             customer_name: customerName
         };
 
-        // ================= ONLINE =================
+        // ================= TRY ONLINE =================
         if (navigator.onLine) {
 
             const data = await submitSale(payload, this);
@@ -200,47 +203,50 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
             });
 
         } else {
-
-            // ================= OFFLINE QUEUE =================
-            window.POS.offlineSync.queueSale({
-                ...payload,
-                local_id: 'sale_' + Date.now(),
-                timestamp: new Date().toISOString(),
-                device_uuid: window.POS.device?.getId?.() || 'unknown'
-            });
-
-            printReceipt({
-                ...payload,
-                offline: true,
-                cash,
-                change: Math.max(0, cash - subtotal)
-            });
-
-            Swal.fire('Offline Sale', 'Saved locally & will sync automatically', 'info');
-
-            window.dispatchEvent(new Event('offlineSyncUpdated'));
+            throw new Error("Offline mode");
         }
-
-        // ================= CLEANUP =================
-        window.POS.state.clearCart();
-        window.POS?.cart?.render?.();
-        document.getElementById('cashGiven').value = '';
 
     } catch (err) {
 
-        console.error("Checkout error:", err);
+        console.warn("⚠ Switching to offline mode:", err.message);
 
-        Swal.fire('Error', 'Sale failed or saved offline', 'warning');
+        const local_id = 'sale_' + Date.now();
 
-        window.POS.offlineSync.queueSale({
+        // ✅ SAVE SALE TO INDEXEDDB
+        await window.POS.db.saveSale({
             ...payload,
-            local_id: 'sale_' + Date.now(),
-            timestamp: new Date().toISOString(),
-            device_uuid: window.POS.device?.getId?.() || 'unknown'
+            local_id
         });
 
-    } finally {
+        // ✅ CREATE RECEIPT
+        const receipt = {
+            sale_local_id: local_id,
+            items: payload?.products || [],
+            subtotal,
+            payment_method: method,
+            mpesa_reference: mpesaRef,
+            cash,
+            change: Math.max(0, cash - subtotal),
+            customer_name: customerName,
+            offline: true
+        };
 
-        window.POS.state.unlockCheckout();
+        // ✅ SAVE RECEIPT
+        await window.POS.db.saveReceipt(receipt);
+
+        // ✅ PRINT
+        printReceipt(receipt);
+
+        Swal.fire('Offline Sale', 'Saved & printable. Will sync later.', 'info');
+
+        window.dispatchEvent(new Event('offlineSyncUpdated'));
     }
+
+    // ================= CLEANUP =================
+    window.POS.state.clearCart();
+    window.POS?.cart?.render?.();
+
+    document.getElementById('cashGiven').value = '';
+
+    window.POS.state.unlockCheckout();
 });
