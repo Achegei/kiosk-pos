@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>@yield('title')</title>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/pos.js'])
+    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/pos/pos.js'])
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
