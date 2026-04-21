@@ -283,3 +283,19 @@ window.addEventListener("posReady", () => {
     });
 
 });
+
+window.addEventListener("offlineSyncUpdated", () => {
+
+    const queue = JSON.parse(localStorage.getItem("offline_sales_queue") || "[]");
+
+    const banner = document.getElementById("offlineBanner");
+
+    if (!banner) return;
+
+    if (queue.length > 0) {
+        banner.classList.remove("hidden");
+        banner.innerText = `⚠ ${queue.length} sales pending sync`;
+    } else {
+        banner.classList.add("hidden");
+    }
+});

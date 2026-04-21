@@ -6,9 +6,20 @@ console.log("Core state module loaded");
 window.POS = window.POS || {};
 
 // =============================
-// SINGLE SOURCE OF TRUTH (CART)
+// SINGLE SOURCE OF TRUTH
 // =============================
-window.cart = window.cart || [];
+window.POS.store = window.POS.store || {};
+
+window.POS.state = {
+
+    // 🔥 ALWAYS POINT TO STORE
+    get cart() {
+        return window.POS.store.cart;
+    },
+
+    set cart(value) {
+        window.POS.store.cart = value;
+    }},
 
 // =============================
 // CORE STATE ENGINE
@@ -53,22 +64,18 @@ window.POS.state = {
         }
     },
 
-    // =============================
-    // CART SYNC HELPERS
-    // =============================
     setCart(cart) {
-        window.cart = cart;
-        this.cart = cart;
-    },
+    window.POS.store.cart = cart;
+        },
 
-    getCart() {
-        return window.cart || this.cart || [];
-    },
+        getCart() {
+            return window.POS.store.cart || [];
+        },
 
-    clearCart() {
-        window.cart = [];
-        this.cart = [];
-    },
+        clearCart() {
+            window.POS.store.cart = [];
+            window.dispatchEvent(new Event("cartUpdated"));
+        },
 
     // =============================
     // CHECKOUT LOCK HELPERS

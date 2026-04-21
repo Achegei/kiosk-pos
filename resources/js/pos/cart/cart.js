@@ -1,9 +1,16 @@
 console.log("Cart module initialized");
 
 // =============================
-// GLOBAL CART STATE
+// SAFE GLOBAL
 // =============================
-window.cart = window.cart || [];
+window.POS = window.POS || {};
+window.POS.cart = window.POS.cart || {};
+
+// =============================
+// USE CENTRAL STORE (NEW)
+// =============================
+window.POS.store = window.POS.store || {};
+window.POS.store.cart = window.POS.store.cart || [];
 
 // =============================
 // DOM REFERENCES (SAFE)
@@ -16,11 +23,13 @@ const changeEl = document.getElementById('change');
 const productsInput = document.getElementById('products');
 
 // =============================
-// ADD TO CART (CORE FUNCTION)
+// ADD TO CART (STATE BASED)
 // =============================
 function addToCart(product) {
 
-    const existing = window.cart.find(i => i.id == product.id);
+    const cart = window.POS.store.cart;
+
+    const existing = cart.find(i => i.id == product.id);
 
     if (existing) {
         if (existing.quantity + 1 > product.stock) {
@@ -29,7 +38,7 @@ function addToCart(product) {
         }
         existing.quantity++;
     } else {
-        window.cart.push({
+        cart.push({
             id: product.id,
             name: product.name,
             price: parseFloat(product.price),
@@ -38,19 +47,48 @@ function addToCart(product) {
         });
     }
 
-    renderCart();
+    window.dispatchEvent(new Event("cartUpdated"));
 }
 
 // =============================
-// RENDER CART
+// REMOVE ITEM
+// =============================
+function removeItem(index) {
+    window.POS.store.cart.splice(index, 1);
+    window.dispatchEvent(new Event("cartUpdated"));
+}
+
+// =============================
+// UPDATE QUANTITY
+// =============================
+function updateQty(index, value) {
+
+    const item = window.POS.store.cart[index];
+
+    let q = parseInt(value) || 1;
+
+    if (q > item.stock) {
+        Swal.fire('Stock limit', 'Cannot exceed stock', 'warning');
+        q = item.stock;
+    }
+
+    item.quantity = q;
+
+    window.dispatchEvent(new Event("cartUpdated"));
+}
+
+// =============================
+// RENDER CART (UI ONLY)
 // =============================
 function renderCart() {
+
+    const cart = window.POS.store.cart;
 
     if (!cartBody) return;
 
     cartBody.innerHTML = '';
 
-    if (!window.cart.length) {
+    if (!cart.length) {
         cartBody.innerHTML = `
             <tr>
                 <td colspan="5" class="text-center py-4 text-gray-400">
@@ -67,7 +105,7 @@ function renderCart() {
         return;
     }
 
-    window.cart.forEach((item, i) => {
+    cart.forEach((item, i) => {
 
         const total = item.price * item.quantity;
 
@@ -77,35 +115,21 @@ function renderCart() {
             <td>${item.name}</td>
             <td>KES ${item.price.toFixed(2)}</td>
             <td>
-                <input type="number" min="1" max="${item.stock}" value="${item.quantity}" class="w-16 border rounded px-2">
+                <input type="number" min="1" max="${item.stock}" value="${item.quantity}" class="w-16 border rounded px-2 qtyInput">
             </td>
             <td>KES ${total.toFixed(2)}</td>
             <td>
-                <button class="bg-red-500 text-white px-2 py-1 rounded">
+                <button class="bg-red-500 text-white px-2 py-1 rounded removeBtn">
                     Remove
                 </button>
             </td>
         `;
 
-        // REMOVE ITEM
-        row.querySelector('button').onclick = () => {
-            window.cart.splice(i, 1);
-            renderCart();
-        };
+        // REMOVE
+        row.querySelector('.removeBtn').onclick = () => removeItem(i);
 
-        // UPDATE QUANTITY
-        row.querySelector('input').onchange = (e) => {
-
-            let q = parseInt(e.target.value) || 1;
-
-            if (q > item.stock) {
-                Swal.fire('Stock limit', 'Cannot exceed stock', 'warning');
-                q = item.stock;
-            }
-
-            item.quantity = q;
-            renderCart();
-        };
+        // UPDATE QTY
+        row.querySelector('.qtyInput').onchange = (e) => updateQty(i, e.target.value);
 
         cartBody.appendChild(row);
     });
@@ -114,23 +138,23 @@ function renderCart() {
 }
 
 // =============================
-// CALCULATE TOTALS
+// TOTALS
 // =============================
 function calculateTotals() {
 
-    const TAX_RATE = 0;
+    const cart = window.POS.store.cart;
 
-    const subtotal = window.cart.reduce((sum, item) =>
+    const subtotal = cart.reduce((sum, item) =>
         sum + item.price * item.quantity, 0
     );
 
-    const tax = subtotal * TAX_RATE;
+    const tax = 0;
 
     if (subtotalEl) subtotalEl.innerText = subtotal.toFixed(2);
     if (taxEl) taxEl.innerText = tax.toFixed(2);
 
     if (productsInput) {
-        productsInput.value = JSON.stringify(window.cart);
+        productsInput.value = JSON.stringify(window.POS.store.cart);
     }
 
     calculateChange();
@@ -154,19 +178,22 @@ function calculateChange() {
 }
 
 // =============================
-// CASH INPUT LISTENER
+// LISTEN TO STORE EVENTS (NEW)
+// =============================
+window.addEventListener("cartUpdated", renderCart);
+
+// =============================
+// CASH INPUT
 // =============================
 if (cashInput) {
     cashInput.addEventListener('input', calculateChange);
 }
 
 // =============================
-// GLOBAL EXPORT (MODULE API)
+// PUBLIC API
 // =============================
-window.POS = window.POS || {};
-
 window.POS.cart = {
     add: addToCart,
     render: renderCart,
-    get: () => window.cart
+    get: () => window.POS.store.cart
 };

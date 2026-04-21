@@ -4,12 +4,25 @@ console.log("Offline sync module loaded");
 // SAFE NAMESPACE
 // =============================
 window.POS = window.POS || {};
+window.POS.offlineSync = window.POS.offlineSync || {};
+
+// =============================
+// LOCK (PREVENT DOUBLE SYNC)
+// =============================
+let isSyncing = false;
 
 // =============================
 // OFFLINE QUEUE KEYS
 // =============================
 const SALES_QUEUE_KEY = "offline_sales_queue";
 const CASH_QUEUE_KEY = "offline_cash_movements";
+
+// =============================
+// HELPERS
+// =============================
+function getCSRF() {
+    return document.querySelector('meta[name="csrf-token"]')?.content;
+}
 
 // =============================
 // GETTERS
@@ -34,10 +47,18 @@ function saveCashQueue(queue) {
 }
 
 // =============================
+// QUEUE COUNT (FOR UI)
+// =============================
+window.POS.offlineSync.getPendingCounts = function () {
+    return {
+        sales: getSalesQueue().length,
+        cash: getCashQueue().length
+    };
+};
+
+// =============================
 // ADD SALE TO QUEUE
 // =============================
-window.POS.offlineSync = window.POS.offlineSync || {};
-
 window.POS.offlineSync.queueSale = function (sale) {
 
     const queue = getSalesQueue();
@@ -45,12 +66,14 @@ window.POS.offlineSync.queueSale = function (sale) {
     queue.push({
         id: Date.now(),
         data: sale,
-        synced: false
+        retries: 0
     });
 
     saveSalesQueue(queue);
 
     console.log("Sale queued offline:", sale);
+
+    window.dispatchEvent(new Event("offlineSyncUpdated"));
 };
 
 // =============================
@@ -63,12 +86,14 @@ window.POS.offlineSync.queueCashMovement = function (movement) {
     queue.push({
         id: Date.now(),
         data: movement,
-        synced: false
+        retries: 0
     });
 
     saveCashQueue(queue);
 
     console.log("Cash movement queued offline:", movement);
+
+    window.dispatchEvent(new Event("cashMovementUpdated"));
 };
 
 // =============================
@@ -79,9 +104,11 @@ async function syncSales() {
     let queue = getSalesQueue();
     if (!queue.length) return;
 
-    for (let item of queue) {
+    console.log(`Syncing ${queue.length} sales...`);
 
-        if (item.synced) continue;
+    const remaining = [];
+
+    for (let item of queue) {
 
         try {
 
@@ -90,24 +117,35 @@ async function syncSales() {
                 headers: {
                     "Content-Type": "application/json",
                     "Accept": "application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                    "X-CSRF-TOKEN": getCSRF()
                 },
                 body: JSON.stringify(item.data)
             });
 
             const data = await res.json();
 
-            if (data.success) {
-                item.synced = true;
+            if (!res.ok || !data.success) {
+                throw new Error("Server rejected sale");
             }
 
+            console.log("✅ Sale synced:", item.id);
+
         } catch (err) {
-            console.error("Sale sync failed:", err);
+
+            console.warn("❌ Sale sync failed, will retry:", item.id);
+
+            item.retries = (item.retries || 0) + 1;
+
+            // optional: drop after too many retries
+            if (item.retries < 5) {
+                remaining.push(item);
+            } else {
+                console.error("🚨 Dropping sale after 5 retries:", item);
+            }
         }
     }
 
-    queue = queue.filter(i => !i.synced);
-    saveSalesQueue(queue);
+    saveSalesQueue(remaining);
 
     window.dispatchEvent(new Event("offlineSyncUpdated"));
 }
@@ -120,9 +158,11 @@ async function syncCash() {
     let queue = getCashQueue();
     if (!queue.length) return;
 
-    for (let item of queue) {
+    console.log(`Syncing ${queue.length} cash movements...`);
 
-        if (item.synced) continue;
+    const remaining = [];
+
+    for (let item of queue) {
 
         try {
 
@@ -131,24 +171,34 @@ async function syncCash() {
                 headers: {
                     "Content-Type": "application/json",
                     "Accept": "application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                    "X-CSRF-TOKEN": getCSRF()
                 },
                 body: JSON.stringify(item.data)
             });
 
             const data = await res.json();
 
-            if (data.success) {
-                item.synced = true;
+            if (!res.ok || !data.success) {
+                throw new Error("Server rejected movement");
             }
 
+            console.log("✅ Cash movement synced:", item.id);
+
         } catch (err) {
-            console.error("Cash sync failed:", err);
+
+            console.warn("❌ Cash sync failed, will retry:", item.id);
+
+            item.retries = (item.retries || 0) + 1;
+
+            if (item.retries < 5) {
+                remaining.push(item);
+            } else {
+                console.error("🚨 Dropping movement after 5 retries:", item);
+            }
         }
     }
 
-    queue = queue.filter(i => !i.synced);
-    saveCashQueue(queue);
+    saveCashQueue(remaining);
 
     window.dispatchEvent(new Event("cashMovementUpdated"));
 }
@@ -160,21 +210,44 @@ async function syncAll() {
 
     if (!navigator.onLine) return;
 
-    console.log("Syncing offline data...");
+    if (isSyncing) {
+        console.log("Sync already running, skipping...");
+        return;
+    }
 
-    await syncSales();
-    await syncCash();
+    isSyncing = true;
 
-    console.log("Offline sync complete");
+    try {
+
+        console.log("🔄 Syncing offline data...");
+
+        await syncSales();
+        await syncCash();
+
+        console.log("✅ Offline sync complete");
+
+    } catch (err) {
+        console.error("Sync error:", err);
+    }
+
+    isSyncing = false;
 }
 
 // =============================
 // AUTO TRIGGERS
 // =============================
 window.addEventListener("online", syncAll);
+
+// periodic retry
 setInterval(syncAll, 10000);
 
 // =============================
-// INIT SYNC ON LOAD
+// INIT
 // =============================
-document.addEventListener("DOMContentLoaded", syncAll);
+document.addEventListener("DOMContentLoaded", () => {
+
+    syncAll();
+
+    // notify UI of initial counts
+    window.dispatchEvent(new Event("offlineSyncUpdated"));
+});

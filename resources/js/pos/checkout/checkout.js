@@ -80,7 +80,7 @@ async function handleMpesa(subtotal) {
 }
 
 // =============================
-// SUBMIT SALE
+// SUBMIT SALE (ONLINE)
 // =============================
 async function submitSale(payload, form) {
 
@@ -94,25 +94,6 @@ async function submitSale(payload, form) {
     });
 
     return await res.json();
-}
-
-// =============================
-// OFFLINE QUEUE
-// =============================
-function saveOffline(payload) {
-
-    let queue = JSON.parse(localStorage.getItem('offline_sales_queue') || '[]');
-
-    queue.push({
-        ...payload,
-        local_id: 'sale_' + Date.now(),
-        timestamp: new Date().toISOString(),
-        device_uuid: window.POS.device?.getId?.() || 'unknown'
-    });
-
-    localStorage.setItem('offline_sales_queue', JSON.stringify(queue));
-
-    console.log("Saved offline sale");
 }
 
 // =============================
@@ -161,7 +142,7 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
         cash = mpesa.cashGiven;
     }
 
-    // ================= CUSTOMER + CREDIT LOGIC =================
+    // ================= CUSTOMER + CREDIT =================
     const selectedCustomer = document.getElementById('customer');
     const customerName = selectedCustomer?.selectedOptions[0]?.text || 'Walk-in';
     const creditBefore = parseFloat(selectedCustomer?.selectedOptions[0]?.dataset.credit || 0);
@@ -170,7 +151,7 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
     let creditAfter = creditBefore;
 
     if (method === "Credit") {
-        creditChange = subtotal; // credit increases
+        creditChange = subtotal;
         creditAfter = creditBefore + creditChange;
     }
 
@@ -184,8 +165,8 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
             id: p.id,
             quantity: p.quantity
         })),
+        subtotal,
 
-        // 🔥 CREDIT DATA FIX
         credit_before: creditBefore,
         credit_change: creditChange,
         credit_after: creditAfter,
@@ -194,14 +175,13 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
 
     try {
 
+        // ================= ONLINE =================
         if (navigator.onLine) {
 
             const data = await submitSale(payload, this);
 
             if (!data.success) {
-                Swal.fire('Failed', 'Sale rejected', 'error');
-                window.POS.state.unlockCheckout();
-                return;
+                throw new Error("Server rejected sale");
             }
 
             window.dispatchEvent(new Event('transactionCompleted'));
@@ -224,33 +204,31 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
             });
 
         } else {
-
-            saveOffline({
-                ...payload,
-                subtotal
-            });
-
-            Swal.fire('Offline Sale', 'Saved locally', 'info');
+            throw new Error("Offline mode");
         }
-
-        window.POS.state.clearCart();
-        window.POS?.cart?.render?.();
-
-        document.getElementById('cashGiven').value = '';
-
-        window.POS.state.unlockCheckout();
 
     } catch (err) {
 
-        console.error(err);
+        console.warn("Switching to offline mode:", err.message);
 
-        saveOffline({
+        // ================= OFFLINE QUEUE (FIXED) =================
+        window.POS.offlineSync.queueSale({
             ...payload,
-            subtotal
+            local_id: 'sale_' + Date.now(),
+            timestamp: new Date().toISOString(),
+            device_uuid: window.POS.device?.getId?.() || 'unknown'
         });
 
-        Swal.fire('Error', 'Saved offline instead', 'warning');
+        Swal.fire('Offline Sale', 'Saved locally & will sync automatically', 'info');
 
-        window.POS.state.unlockCheckout();
+        window.dispatchEvent(new Event('offlineSyncUpdated'));
     }
+
+    // ================= CLEANUP =================
+    window.POS.state.clearCart();
+    window.POS?.cart?.render?.();
+
+    document.getElementById('cashGiven').value = '';
+
+    window.POS.state.unlockCheckout();
 });
