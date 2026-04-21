@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>@yield('title','POS Dashboard')</title>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-@vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/pos.js'])
+@vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/pos/pos.js'])
 </head>
 <body class="bg-gray-100 min-h-screen">
 
