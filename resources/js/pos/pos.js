@@ -6,6 +6,7 @@ console.log("POS system booting...");
 import "./core/state";
 import "./core/device";
 import "./core/network";
+import "./core/db";
 
 // =============================
 // CORE FEATURES

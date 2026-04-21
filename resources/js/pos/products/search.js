@@ -29,6 +29,7 @@ async function fetchProducts(query) {
     if (!query) return [];
 
     try {
+
         let res = await fetch(`/fetch/products?query=${encodeURIComponent(query)}`, {
             headers: {
                 'X-DEVICE-ID': deviceId,
@@ -38,9 +39,19 @@ async function fetchProducts(query) {
 
         if (res.ok) {
             const data = await res.json();
-            if (Array.isArray(data) && data.length) return data;
+
+            if (Array.isArray(data) && data.length) {
+
+                // 🔥 SAVE TO INDEXEDDB
+                if (window.POS?.db?.saveProducts) {
+                    await window.POS.db.saveProducts(data);
+                }
+
+                return data;
+            }
         }
 
+        // 🔁 fallback endpoint
         res = await fetch(`/fetch/products/${encodeURIComponent(query)}`, {
             headers: {
                 'X-DEVICE-ID': deviceId,
@@ -54,14 +65,28 @@ async function fetchProducts(query) {
             product = [product];
         }
 
+        if (product?.length) {
+
+            // 🔥 SAVE TO INDEXEDDB
+            if (window.POS?.db?.saveProducts) {
+                await window.POS.db.saveProducts(product);
+            }
+        }
+
         return product || [];
 
     } catch (err) {
-        console.error("Fetch error:", err);
+
+        console.warn("Offline → using IndexedDB");
+
+        // 🔥 OFFLINE FALLBACK
+        if (window.POS?.db?.searchProducts) {
+            return await window.POS.db.searchProducts(query);
+        }
+
         return [];
     }
 }
-
 // =============================
 // RENDER SUGGESTIONS
 // =============================
