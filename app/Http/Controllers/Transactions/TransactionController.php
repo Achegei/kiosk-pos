@@ -296,6 +296,7 @@ public function posCheckout(Request $request)
                 'total' => $total,
                 'payment_method' => $transaction->payment_method,
                 'mpesa_reference' => $transaction->mpesa_reference,
+                'user' => auth()->user()->name,
                 'customer' => $customerData,
                 'items' => $transaction->items->map(fn ($i) => [
                     'name' => $i->product->name,
