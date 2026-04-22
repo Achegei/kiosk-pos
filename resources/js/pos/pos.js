@@ -1,7 +1,13 @@
 console.log("POS system booting...");
 
 // =============================
-// CORE (LOAD FIRST)
+// 🔥 SAFETY FIRST (CRITICAL)
+// =============================
+import "../bootstrap";           // axios (now intercepted)
+import "./core/bootstrap";       // crash guard (YOU created)
+
+// =============================
+// CORE SYSTEM (SAFE NOW)
 // =============================
 import "./core/state";
 import "./core/device";
@@ -23,19 +29,19 @@ import "./cash/cashMovements";
 import "./register/register";
 
 // =============================
-// UI + SYSTEM EVENTS (IMPORTANT FIX)
+// UI + SYSTEM EVENTS
 // =============================
 import "./ui/events";
 import "./ui/receipt";
 import "./ui/calculator";
 
 // =============================
-// PRINTER MODULES (NEW)
+// PRINTER MODULES
 // =============================
 import "./printer/escpos";
 
 // =============================
-// UTILITIES (MISSING BEFORE)
+// UTILITIES
 // =============================
 import "./utils/offlineSync";
 
@@ -47,11 +53,10 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("POS system fully initialized");
 
     window.dispatchEvent(new Event("posReady"));
-
 });
 
 // =============================
-// 🔥 SERVICE WORKER REGISTRATION (CRITICAL)
+// 🔥 SERVICE WORKER REGISTRATION
 // =============================
 if ('serviceWorker' in navigator) {
 
