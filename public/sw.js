@@ -1,55 +1,62 @@
 console.log("POS Service Worker loaded");
 
-const CACHE_NAME = 'pos-cache-v4';
+const CACHE_NAME = 'pos-cache-v5';
 
 // =============================
-// INSTALL
+// INSTALL (CACHE APP SHELL)
 // =============================
 self.addEventListener('install', event => {
-    event.waitUntil(
-        (async () => {
 
-            const cache = await caches.open(CACHE_NAME);
+    event.waitUntil((async () => {
 
-            console.log("Caching POS shell...");
+        const cache = await caches.open(CACHE_NAME);
 
-            try {
-                const res = await fetch('/build/manifest.json');
-                const manifest = await res.json();
+        console.log("Caching POS shell...");
 
-                const assets = Object.values(manifest)
-                    .filter(entry => entry.file)
-                    .map(entry => '/build/' + entry.file);
+        try {
+            const res = await fetch('/build/manifest.json');
+            const manifest = await res.json();
 
-                await cache.addAll([
-                    '/',
-                    '/pos',
-                    '/dashboard',
-                    ...assets
-                ]);
+            const assets = Object.values(manifest)
+                .filter(e => e.file)
+                .map(e => '/build/' + e.file);
 
-                console.log("POS assets cached");
+            await cache.addAll([
+                '/',
+                '/pos',
+                '/dashboard',   // 🔥 MUST EXIST
+                ...assets
+            ]);
 
-            } catch (err) {
-                console.warn("Manifest fetch failed");
-            }
+            console.log("✅ Assets cached");
 
-        })()
-    );
+        } catch (err) {
+
+            console.warn("⚠️ Manifest failed, caching minimal shell");
+
+            await cache.addAll([
+                '/',
+                '/pos',
+                '/dashboard'
+            ]);
+        }
+
+    })());
 
     self.skipWaiting();
 });
 
 // =============================
-// ACTIVATE
+// ACTIVATE (CLEAN OLD CACHE)
 // =============================
 self.addEventListener('activate', event => {
+
     event.waitUntil(
         caches.keys().then(keys =>
             Promise.all(
                 keys
-                    .filter(key => key !== CACHE_NAME)
-                    .map(key => caches.delete(key))
+                    .filter(k => k !== CACHE_NAME)
+                    .map(k => caches.delete(k))
             )
         )
     );
@@ -58,7 +65,7 @@ self.addEventListener('activate', event => {
 });
 
 // =============================
-// BACKGROUND SYNC (🔥 FIXED LOCATION)
+// BACKGROUND SYNC
 // =============================
 self.addEventListener('sync', event => {
 
@@ -70,20 +77,15 @@ self.addEventListener('sync', event => {
     }
 });
 
-// =============================
-// SYNC FUNCTION
-// =============================
 async function syncOfflineSales() {
 
     try {
 
         const clients = await self.clients.matchAll();
 
-        clients.forEach(client => {
-            client.postMessage({
-                type: "SYNC_REQUEST"
-            });
-        });
+        for (const client of clients) {
+            client.postMessage({ type: "SYNC_REQUEST" });
+        }
 
     } catch (err) {
         console.error("Background sync failed:", err);
@@ -99,7 +101,7 @@ self.addEventListener('fetch', event => {
     const url = new URL(req.url);
 
     // =============================
-    // API → NETWORK FIRST
+    // 1. API → NETWORK FIRST
     // =============================
     if (
         url.pathname.startsWith('/api/') ||
@@ -110,28 +112,13 @@ self.addEventListener('fetch', event => {
     ) {
 
         event.respondWith(
-            fetch(req).catch(() => {
-
-                return new Response(JSON.stringify({
+            fetch(req).catch(() =>
+                new Response(JSON.stringify({
                     success: false,
                     offline: true
                 }), {
                     headers: { "Content-Type": "application/json" }
-                });
-            })
-        );
-
-        return;
-    }
-
-    // =============================
-    // NAVIGATION
-    // =============================
-    if (req.mode === 'navigate') {
-
-        event.respondWith(
-            fetch(req).catch(() =>
-                caches.match('/pos') || caches.match('/')
+                })
             )
         );
 
@@ -139,24 +126,61 @@ self.addEventListener('fetch', event => {
     }
 
     // =============================
-    // STATIC CACHE FIRST
+    // 2. NAVIGATION (CRITICAL FIX)
     // =============================
-    event.respondWith(
-        caches.match(req).then(cached => {
+    if (req.mode === 'navigate') {
 
-            if (cached) return cached;
+        event.respondWith((async () => {
 
-            return fetch(req).then(res => {
+            try {
+                return await fetch(req);
+            } catch (err) {
 
-                const copy = res.clone();
+                console.warn("📴 Offline navigation:", req.url);
 
-                caches.open(CACHE_NAME).then(cache => {
-                    cache.put(req, copy);
-                });
+                const cache = await caches.open(CACHE_NAME);
 
-                return res;
+                // 🔥 STRICT FALLBACK ORDER
+                return (
+                    await cache.match(req.url) ||      // exact page
+                    await cache.match('/dashboard') || // preferred
+                    await cache.match('/pos') ||
+                    await cache.match('/') ||
+                    new Response('<h1>Offline</h1>', {
+                        headers: { "Content-Type": "text/html" }
+                    })
+                );
+            }
 
-            }).catch(() => new Response('', { status: 200 }));
-        })
-    );
+        })());
+
+        return;
+    }
+
+    // =============================
+    // 3. STATIC → CACHE FIRST
+    // =============================
+    event.respondWith((async () => {
+
+        const cached = await caches.match(req);
+        if (cached) return cached;
+
+        try {
+
+            const res = await fetch(req);
+
+            const copy = res.clone();
+
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(req, copy);
+
+            return res;
+
+        } catch {
+
+            // prevent crash
+            return new Response('', { status: 200 });
+        }
+
+    })());
 });
