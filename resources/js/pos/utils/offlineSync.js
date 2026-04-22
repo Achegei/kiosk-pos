@@ -66,8 +66,7 @@ async function safePost(url, payload) {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Accept": "application/json",
-                "X-CSRF-TOKEN": getCSRF()
+                "Accept": "application/json"
             },
             body: JSON.stringify(payload)
         });
@@ -128,11 +127,23 @@ async function syncSales() {
         customer_id: sale.customer_id,
         payment_method: sale.payment_method,
         mpesa_code: sale.mpesa_code,
-        items: sale.products || sale.items || []
+        items: (sale.products || sale.items || []).map(i => ({
+            product_id: i.id || i.product_id,
+            quantity: i.quantity,
+            price: i.price
+        }))
     }));
 
-    const response = await safePost("/api/offline-sync", {
-        sales: payloads
+    const response = await fetch("/api/offline-sync", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-DEVICE-ID": window.POS.device?.uuid || localStorage.getItem("device_uuid")
+        },
+        body: JSON.stringify({
+            sales: payloads
+        })
     });
 
     const { ok, data } = response;

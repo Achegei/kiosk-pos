@@ -28,8 +28,8 @@ Route::middleware(['auth'])->group(function () {
     // 💰 POS CHECKOUT
     Route::post('pos/checkout', [TransactionController::class, 'posCheckout']);
 
-    // 🔄 OFFLINE SALES SYNC
-    Route::post('offline-sync', [OfflineSaleController::class, 'sync']);
-});
 
+});
+ // 🔄 OFFLINE SALES SYNC
+    Route::post('offline-sync', [OfflineSaleController::class, 'sync']);
 Route::post('/webhooks/intasend', [IntaSendController::class, 'handle']);
