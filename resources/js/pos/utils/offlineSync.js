@@ -95,25 +95,6 @@ async function safePost(url, payload) {
 }
 
 // =============================
-// QUEUE SALE (FIXED)
-// =============================
-window.POS.offlineSync.queueSale = function (sale) {
-
-    const queue = getSalesQueue();
-
-    queue.push({
-        id: crypto.randomUUID?.() || Date.now(),
-        data: structuredClone ? structuredClone(sale) : JSON.parse(JSON.stringify(sale)),
-        retries: 0,
-        status: "pending"
-    });
-
-    saveSalesQueue(queue);
-
-    window.dispatchEvent(new Event("offlineSyncUpdated"));
-};
-
-// =============================
 // QUEUE CASH
 // =============================
 window.POS.offlineSync.queueCashMovement = function (movement) {
@@ -138,57 +119,32 @@ window.POS.offlineSync.queueCashMovement = function (movement) {
 async function syncSales() {
 
     const sales = await window.POS.db.getPendingSales();
-
     if (!sales.length) return;
 
     console.log(`🔄 Syncing ${sales.length} sales...`);
 
-    for (let sale of sales) {
+    const payloads = sales.map(sale => ({
+        local_id: sale.local_id,
+        customer_id: sale.customer_id,
+        payment_method: sale.payment_method,
+        mpesa_code: sale.mpesa_code,
+        items: sale.products || sale.items || []
+    }));
 
-        try {
+    const response = await safePost("/api/offline-sync", {
+        sales: payloads
+    });
 
-            // ✅ SEND ONLY CLEAN PAYLOAD
-            const payload = { ...sale };
-            delete payload.id;
-            delete payload.synced;
-            delete payload.created_at;
+    const { ok, data } = response;
 
-            const { ok, data } = await safePost("/api/sync-sale", payload);
-
-            if (ok && data?.success) {
-
-                console.log("✅ Synced:", sale.local_id);
-
-                // ✅ MARK AS SYNCED (IMPORTANT)
-                await window.POS.db.markSaleSynced(sale.local_id);
-
-                // ✅ SAVE SERVER RECEIPT (UPGRADE FROM OFFLINE)
-                if (data.receipt) {
-                    await window.POS.db.saveReceipt({
-                        ...data.receipt,
-                        sale_local_id: sale.local_id
-                    });
-                }
-
-                // ✅ NOTIFY UI
-                window.dispatchEvent(new CustomEvent("saleSynced", {
-                    detail: { local_id: sale.local_id, server: data }
-                }));
-
-            } else {
-                console.warn("❌ Server rejected:", sale.local_id);
-            }
-
-        } catch (err) {
-
-            console.error("❌ Sync error:", sale.local_id, err);
-
-            // ❗ DO NOTHING → keep sale pending
-            // it will retry next cycle
-        }
+    if (!ok || !data?.success) {
+        console.error("❌ Sync failed:", response);
+        return;
     }
 
-    window.dispatchEvent(new Event("offlineSyncUpdated"));
+    for (let sale of sales) {
+        await window.POS.db.markSaleSynced(sale.local_id);
+    }
 
     console.log("✅ Sync cycle complete");
 }
@@ -219,6 +175,7 @@ async function syncCash() {
         }
 
         item.retries++;
+        await window.POS.db.saveSale(sale);
 
         if (item.retries < 5) {
             remaining.push(item);

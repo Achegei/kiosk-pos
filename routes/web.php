@@ -249,7 +249,6 @@ Route::prefix('reports')->middleware(['auth', 'tenant.subscription'])->group(fun
     */
     Route::post('/transactions/pos-checkout', [TransactionController::class, 'posCheckout'])
         ->name('transactions.pos_checkout');
-
     /*
     |--------------------------------------------------------------------------
     | LOGOUT

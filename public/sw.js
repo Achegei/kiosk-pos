@@ -1,45 +1,27 @@
 console.log("POS Service Worker loaded");
 
-const CACHE_NAME = 'pos-cache-v5';
+const CACHE_NAME = 'pos-cache-v6';
 
 // =============================
 // INSTALL (CACHE APP SHELL)
 // =============================
 self.addEventListener('install', event => {
-
     event.waitUntil((async () => {
 
         const cache = await caches.open(CACHE_NAME);
 
-        console.log("Caching POS shell...");
+        const CORE_ASSETS = [
+            '/',
+            '/pos',
+            '/dashboard',
+            '/login',
+            'logout'
+            
+        ];
 
-        try {
-            const res = await fetch('/build/manifest.json');
-            const manifest = await res.json();
+        console.log("Caching core POS shell...");
 
-            const assets = Object.values(manifest)
-                .filter(e => e.file)
-                .map(e => '/build/' + e.file);
-
-            await cache.addAll([
-                '/',
-                '/pos',
-                '/dashboard',   // 🔥 MUST EXIST
-                ...assets
-            ]);
-
-            console.log("✅ Assets cached");
-
-        } catch (err) {
-
-            console.warn("⚠️ Manifest failed, caching minimal shell");
-
-            await cache.addAll([
-                '/',
-                '/pos',
-                '/dashboard'
-            ]);
-        }
+        await cache.addAll(CORE_ASSETS);
 
     })());
 
@@ -136,20 +118,21 @@ self.addEventListener('fetch', event => {
                 return await fetch(req);
             } catch (err) {
 
-                console.warn("📴 Offline navigation:", req.url);
-
                 const cache = await caches.open(CACHE_NAME);
 
-                // 🔥 STRICT FALLBACK ORDER
-                return (
-                    await cache.match(req.url) ||      // exact page
-                    await cache.match('/dashboard') || // preferred
+                const fallback =
                     await cache.match('/pos') ||
+                    await cache.match('/dashboard') ||
                     await cache.match('/') ||
-                    new Response('<h1>Offline</h1>', {
+                    new Response(`
+                        <h1 style="font-family: sans-serif; text-align:center;">
+                            You are offline
+                        </h1>
+                    `, {
                         headers: { "Content-Type": "text/html" }
-                    })
-                );
+                    });
+
+                return fallback;
             }
 
         })());

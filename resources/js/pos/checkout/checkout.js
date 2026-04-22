@@ -213,10 +213,16 @@ document.getElementById('checkoutForm')?.addEventListener('submit', async functi
         const local_id = 'sale_' + Date.now();
 
         // ✅ SAVE SALE TO INDEXEDDB
-        await window.POS.db.saveSale({
+        const saleData = {
             ...payload,
             local_id
-        });
+        };
+
+        // save locally
+        await window.POS.db.saveSale(saleData);
+
+// ALSO queue for sync (IMPORTANT FIX)
+window.POS.offlineSync.queueSale(saleData);
 
         // ✅ CREATE RECEIPT
         const receipt = {

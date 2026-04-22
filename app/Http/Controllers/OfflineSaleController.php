@@ -176,7 +176,12 @@ class OfflineSaleController extends Controller
                             'total' => $lineTotal,
                         ]);
 
-                        /*
+                        Log::info('OFFLINE SALE CREATED', [
+                                'transaction_id' => $transaction->id,
+                                'device_uuid' => $deviceUuid,
+                                'items_count' => count($sale['items'])
+                            ]);
+                                /*
                         |--------------------------------------------------------------------------
                         | 7. STOCK UPDATE
                         |--------------------------------------------------------------------------
