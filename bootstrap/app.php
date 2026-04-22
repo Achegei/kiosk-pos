@@ -22,7 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role'      => \App\Http\Middleware\RoleMiddleware::class, // your custom one
             'throttle'  => \Illuminate\Routing\Middleware\ThrottleRequests::class,
             'verified'  => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
-            'device.license' => \App\Http\Middleware\CheckDeviceLicense::class,
+            'device' => \App\Http\Middleware\CheckDeviceLicense::class,
             'register.open' => \App\Http\Middleware\EnsureRegisterIsOpen::class,
             'tenant.subscription' => \App\Http\Middleware\CheckTenantSubscription::class,
             'password.reset' => \App\Http\Middleware\EnsurePasswordReset::class,
