@@ -134,22 +134,30 @@ async function syncSales() {
         }))
     }));
 
-    const response = await fetch("/api/offline-sync", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-DEVICE-ID": window.POS.device?.uuid || localStorage.getItem("device_uuid")
-        },
-        body: JSON.stringify({
-            sales: payloads
-        })
-    });
+    console.log("🚀 SYNC PAYLOAD:", payloads);
 
-    const { ok, data } = response;
+    const res = await fetch("/api/offline-sync", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-DEVICE-ID": window.POS.device?.uuid || localStorage.getItem("device_uuid")
+    },
+    body: JSON.stringify({
+        sales: payloads
+    })
+});
 
-    if (!ok || !data?.success) {
-        console.error("❌ Sync failed:", response);
+    let data = null;
+
+    try {
+        data = await res.json();
+    } catch {
+        data = { success: false };
+    }
+
+    if (!res.ok || !data?.status === 'success') {
+        console.error("❌ Sync failed:", res, data);
         return;
     }
 
@@ -186,7 +194,6 @@ async function syncCash() {
         }
 
         item.retries++;
-        await window.POS.db.saveSale(sale);
 
         if (item.retries < 5) {
             remaining.push(item);

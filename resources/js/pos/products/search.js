@@ -25,7 +25,7 @@ const deviceId = window.POS?.device?.getId?.() || window.deviceId;
 // FETCH PRODUCTS
 // =============================
 async function fetchProducts(query) {
-
+   
     if (!query) return [];
 
     // =============================
